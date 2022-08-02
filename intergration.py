@@ -5,12 +5,18 @@ import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 import open3d as o3d
 
+import os
+
 from camera_pose import read_trajectory
 
+DATA_DIR = "./data/redwood-livingroom/"
+POSE_FILE = "livingroom.log"
+COLOR_LIST = sorted(os.listdir(DATA_DIR+'image/'))
+DEPTH_LIST = sorted(os.listdir(DATA_DIR+'depth/'))
 
 STEP = 10
 
-camera_poses = read_trajectory("./data/redwood/livingroom1-traj.txt")
+camera_poses = read_trajectory("{}{}".format(DATA_DIR, POSE_FILE))
 
 volume = o3d.pipelines.integration.ScalableTSDFVolume(
     voxel_length=4.0 / 512.0,
@@ -19,8 +25,9 @@ volume = o3d.pipelines.integration.ScalableTSDFVolume(
 
 for i in range(0,len(camera_poses),STEP):
     print("Integrate {:d}-th image into the volume.".format(i))
-    color = o3d.io.read_image("./data/redwood/image/{:05d}.jpg".format(i))
-    depth = o3d.io.read_image("./data/redwood/depth/{:05d}.png".format(i))
+    # print("{}image/{}".format(DATA_DIR, COLOR_LIST[i]))
+    color = o3d.io.read_image("{}image/{}".format(DATA_DIR, COLOR_LIST[i]))
+    depth = o3d.io.read_image("{}depth/{}".format(DATA_DIR, DEPTH_LIST[i]))
     rgbd = o3d.geometry.RGBDImage.create_from_color_and_depth(
         color, depth, depth_trunc=4.0, convert_rgb_to_intensity=False)
     volume.integrate(

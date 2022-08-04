@@ -16,12 +16,12 @@ from core.deep_global_registration import DeepGlobalRegistration
 from config import get_config
 
 # generate pointcloud from RGB-D
-from depth2pcd import generate_point_cloud
-from depth2pcd import fusion_pcds
-from depth2pcd import concate_pcds
+from utils import generate_point_cloud
+from utils import fusion_pcds
+from utils import concate_pcds
 
 
-DATA_DIR = "./data/redwood/"
+DATA_DIR = "./data/redwood-livingroom/"
 COLOR_LIST = sorted(os.listdir(DATA_DIR+'image/'))
 DEPTH_LIST = sorted(os.listdir(DATA_DIR+'depth/'))
 STEP = 10
@@ -85,12 +85,7 @@ def pcd_fusion_vol(_pcd_list):
 	sum_pcd = fusion_pcds(
 		_pcd_list[0],
 		_pcd_list[1],
-		# T,
-		
-		# [[ 0.89232086,-8.44748547 ,1.00823318, 1.00233291],
-		# [ 6.79393713 ,0.98849955 ,6.0128668  ,1.58693927],
-		# [ 0.99663805 ,6.7384582  ,0.88205877 ,0.76794377],
-		# [ 0, 0, 0, 1]]
+		T,
 		[[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
 		)
 	o3d.visualization.draw_geometries([sum_pcd])
@@ -136,13 +131,13 @@ if __name__ == '__main__':
 
 	# fusion pcds DFS
 
-	# FUSION_LIST = [i for i in range(0,len(COLOR_LIST),STEP) ]
-	# main_pcd =  pcd_fusion_dfs(FUSION_LIST,dgr)
+	FUSION_LIST = [i for i in range(0,len(COLOR_LIST),STEP) ]
+	main_pcd =  pcd_fusion_dfs(FUSION_LIST,dgr)
 
 	# fusion pcds VOLUME
 
-	FUSION_LIST = [COLOR_LIST[i][:-4] for i in range(0,len(COLOR_LIST),STEP) ]
-	# print(FUSION_LIST)
-	main_pcd = pcd_fusion_vol(FUSION_LIST)
+	# FUSION_LIST = [COLOR_LIST[i][:-4] for i in range(0,len(COLOR_LIST),STEP) ]
+	# # print(FUSION_LIST)
+	# main_pcd = pcd_fusion_vol(FUSION_LIST)
 
 	o3d.visualization.draw_geometries([main_pcd])

@@ -1,50 +1,83 @@
-
-import os
 import numpy as np
+from time import time
+import matplotlib.pyplot as plt
+import matplotlib.image as mpimg
 import open3d as o3d
-from camera_pose import read_trajectory
-# from core.deep_global_registration import DeepGlobalRegistration
 
+def generate_point_cloud(pic1:str,pic2:str):
+    # print("Read Redwood dataset")
+    color_raw = o3d.io.read_image(pic1)
+    depth_raw = o3d.io.read_image(pic2)
+    rgbd_image = o3d.geometry.RGBDImage.create_from_color_and_depth(color_raw, depth_raw,convert_rgb_to_intensity=False)
+    pcd = o3d.geometry.PointCloud.create_from_rgbd_image(
+        rgbd_image,
+        o3d.camera.PinholeCameraIntrinsic(o3d.camera.PinholeCameraIntrinsicParameters.PrimeSenseDefault),
+#         o3d.camera.PinholeCameraIntrinsic(o3d.camera.PinholeCameraIntrinsicParameters.Kinect2DepthCameraDefault),
+#         project_valid_depth_only=False
 
-def display_inlier_outlier(cloud, ind):
+    )
+    # Flip it, otherwise the pointcloud will be upside down
+    pcd.transform([[1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1]])
+    return pcd
+#     o3d.io.write_point_cloud("sample.ply", pcd)
 
-    inlier_cloud = cloud.select_by_index(ind)
-    outlier_cloud = cloud.select_by_index(ind, invert=True)
+def generate_point_cloud_with_matrix(pic1:str,pic2:str,M):
+    color_raw = o3d.io.read_image(pic1)
+    depth_raw = o3d.io.read_image(pic2)
+    rgbd_image = o3d.geometry.RGBDImage.create_from_color_and_depth(color_raw, depth_raw,convert_rgb_to_intensity=False)
+    pcd = o3d.geometry.PointCloud.create_from_rgbd_image(
+        rgbd_image,
+        o3d.camera.PinholeCameraIntrinsic(o3d.camera.PinholeCameraIntrinsicParameters.PrimeSenseDefault),
+        M
+    )
+    # Flip it, otherwise the pointcloud will be upside down
+    pcd.transform([[1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1]])
+    return pcd
 
+def concate_pcds(pcd0:o3d.geometry.PointCloud, pcd1:o3d.geometry.PointCloud):
 
-    print("Showing outliers (red) and inliers (gray): ")
-    outlier_cloud.paint_uniform_color([1, 0, 0])
-    inlier_cloud.paint_uniform_color([0.8, 0.8, 0.8])
-    o3d.visualization.draw_geometries([inlier_cloud, outlier_cloud])
+    tmp_points = np.concatenate((pcd0.points,pcd1.points), axis=0)
+    tmp_colors = np.concatenate((pcd0.colors,pcd1.colors), axis=0)
+    tmp = o3d.geometry.PointCloud()
+    tmp.points = o3d.utility.Vector3dVector(tmp_points)
+    tmp.colors = o3d.utility.Vector3dVector(tmp_colors)
 
-# pcd = o3d.io.read_point_cloud("./tmp/tmp-02.ply")
-# voxel_down_pcd = pcd.voxel_down_sample(voxel_size=0.03)
-# # pcd = pcd.uniform_down_sample(voxel_size=0.03)
-# cl, ind = voxel_down_pcd.remove_statistical_outlier(nb_neighbors=20,
-#                                                     std_ratio=2.0)
-# display_inlier_outlier(voxel_down_pcd, ind)
-# # o3d.visualization.draw_geometries([pcd])
+    # o3d.visualization.draw_geometries([tmp])
+    return tmp
 
-# [[ 0.99956958  0.00933272 -0.02781266  0.01262829]
-#  [-0.00588444  0.99256472  0.12157586  0.24534924]
-#  [ 0.02874049 -0.12135987  0.99219242  0.02284139]
-#  [ 0.          0.          0.          1.        ]]
+def fusion_pcds(pcd_base, pcd_add, T_base, T_add):
+    volume = o3d.pipelines.integration.ScalableTSDFVolume(
+        voxel_length=4.0 / 512.0,
+        sdf_trunc=0.04,
+        color_type=o3d.pipelines.integration.TSDFVolumeColorType.RGB8)
 
-# [[ 0.89232086 -8.44748547  1.00823318  1.00233291]
-#  [ 6.79393713  0.98849955  6.0128668   1.58693927]
-#  [ 0.99663805  6.7384582   0.88205877  0.76794377]
-#  [ 0.          0.          0.          1.        ]]
+    color = o3d.io.read_image("./data/redwood/image/{}.jpg".format(pcd_base))
+    depth = o3d.io.read_image("./data/redwood/depth/{}.png".format(pcd_base))
+    rgbd = o3d.geometry.RGBDImage.create_from_color_and_depth(
+        color, depth, depth_trunc=4.0, convert_rgb_to_intensity=False)
 
+    volume.integrate(
+        rgbd,
+        o3d.camera.PinholeCameraIntrinsic(
+            o3d.camera.PinholeCameraIntrinsicParameters.PrimeSenseDefault),
+            np.linalg.inv(T_base)
+            # T_base
+        )
 
+    color = o3d.io.read_image("./data/redwood/image/{}.jpg".format(pcd_add))
+    depth = o3d.io.read_image("./data/redwood/depth/{}.png".format(pcd_add))
+    rgbd = o3d.geometry.RGBDImage.create_from_color_and_depth(
+        color, depth, depth_trunc=4.0, convert_rgb_to_intensity=False)
 
-camera_poses = read_trajectory("./data/redwood/livingroom1-traj.txt")
-m0 = np.linalg.inv(camera_poses[0].pose)
-m1 = np.linalg.inv(camera_poses[10].pose)
-
-print(m0)
-print('-'*10)
-print(m1)
-print('-'*10)
-ans = np.divide(m1,m0)
-ans[np.isnan(ans)] = 0
-print(ans)
+    volume.integrate(
+        rgbd,
+        o3d.camera.PinholeCameraIntrinsic(
+            o3d.camera.PinholeCameraIntrinsicParameters.PrimeSenseDefault),
+            np.linalg.inv(T_add)
+            # T_add
+        )
+    
+    pcd = volume.extract_point_cloud()
+    # Flip it, otherwise the pointcloud will be upside down
+    pcd.transform([[1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1]])
+    return pcd

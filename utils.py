@@ -34,10 +34,11 @@ def generate_point_cloud_with_matrix(pic1:str,pic2:str,M):
     pcd.transform([[1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1]])
     return pcd
 
-def concate_pcds(pcd0:o3d.geometry.PointCloud, pcd1:o3d.geometry.PointCloud):
+def concate_pcds(pcd_list):
 
-    tmp_points = np.concatenate((pcd0.points,pcd1.points), axis=0)
-    tmp_colors = np.concatenate((pcd0.colors,pcd1.colors), axis=0)
+
+    tmp_points = np.concatenate(tuple([i.points for i in pcd_list]), axis=0)
+    tmp_colors = np.concatenate(tuple([i.colors for i in pcd_list]), axis=0)
     tmp = o3d.geometry.PointCloud()
     tmp.points = o3d.utility.Vector3dVector(tmp_points)
     tmp.colors = o3d.utility.Vector3dVector(tmp_colors)
@@ -81,3 +82,71 @@ def fusion_pcds(pcd_base, pcd_add, T_base, T_add):
     # Flip it, otherwise the pointcloud will be upside down
     pcd.transform([[1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1]])
     return pcd
+
+
+
+def get_max_distance(min0:float,max0:float,min1:float,max1:float):
+    d = [max0 - min0,max0 - min1,max1 - min0,max1 - min1]
+    # print(d)
+    ans = d.index(max(d))
+    if ans == 0 : return min0, max0
+    if ans == 1 : return min1, max0
+    if ans == 2 : return min0, max1
+    if ans == 3 : return min1, max1
+    return False
+
+def get_max_box_corner(box_0,box_1):
+    min_x0 = np.argmin(box_0(bp_0)[:,0])
+    min_y0 = np.argmin(box_0(bp_0)[:,1])
+    min_z0 = np.argmin(box_0(bp_0)[:,2])
+
+    max_x0 = np.argmax(box_0(bp_0)[:,0])
+    max_y0 = np.argmax(box_0(bp_0)[:,1])
+    max_z0 = np.argmax(box_0(bp_0)[:,2])
+
+
+    min_x1 = np.argmin(box_1(bp_1)[:,0])
+    min_y1 = np.argmin(box_1(bp_1)[:,1])
+    min_z1 = np.argmin(box_1(bp_1)[:,2])
+
+    max_x1 = np.argmax(box_1(bp_1)[:,0])
+    max_y1 = np.argmax(box_1(bp_1)[:,1])
+    max_z1 = np.argmax(box_1(bp_1)[:,2])
+
+    x_min, x_max = get_max_distance(min_x0, max_x0, min_x1, max_x1)
+    y_min, y_max = get_max_distance(min_y0, max_y0, min_y1, max_y1)
+    z_min, z_max = get_max_distance(min_z0, max_z0, min_z1, max_z1)
+    return [[x_min, y_min, z_min],
+            [x_min, y_min, z_max],
+            [x_min, y_max, z_min],
+            [x_min, y_max, z_max],
+            [x_max, y_min, z_min],
+            [x_max, y_min, z_max],
+            [x_max, y_max, z_min],
+            [x_max, y_max, z_max],
+        ] 
+
+def get_max_box_center_extent(box_0,box_1):
+    min_x0 = min(box_0[:,0])
+    min_y0 = min(box_0[:,1])
+    min_z0 = min(box_0[:,2])
+
+    max_x0 = max(box_0[:,0])
+    max_y0 = max(box_0[:,1])
+    max_z0 = max(box_0[:,2])
+
+
+    min_x1 = min(box_1[:,0])
+    min_y1 = min(box_1[:,1])
+    min_z1 = min(box_1[:,2])
+
+    max_x1 = max(box_1[:,0])
+    max_y1 = max(box_1[:,1])
+    max_z1 = max(box_1[:,2])
+
+    # print(max_x0,max_y0,max_z0)
+    x_min, x_max = get_max_distance(min_x0, max_x0, min_x1, max_x1)
+    y_min, y_max = get_max_distance(min_y0, max_y0, min_y1, max_y1)
+    z_min, z_max = get_max_distance(min_z0, max_z0, min_z1, max_z1)
+    # print(x_min, x_max,y_min, y_max,z_min, z_max)
+    return np.array([(x_max + x_min)/2, (y_max + y_min)/2, (z_max + z_min)/2]),np.array([(x_max - x_min)/2, (y_max - y_min)/2, (z_max - z_min)/2])

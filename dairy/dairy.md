@@ -144,6 +144,42 @@ pip install -r requirements.txt
 
 并将box分割成多个小区块，再对每个区块做随机的点云采样
 
+```python
+def slice_grid_pcds(pcd0, pcd1, box, step):
+    box_points = np.asarray(box.get_box_points())
+    start_point = [min(box_points[:,0]), min(box_points[:,1]),min(box_points[:,2]) ]
+    # print(start_point)
+    extent = box.get_extent()
+    grid_list = []
+    px, py, pz = start_point
+    for x in range(1, math.floor((extent[0] * 2 )/step) - 1):
+        for y in range(1, math.floor((extent[1] * 2 )/step) - 1):
+            for z in range(1, math.floor((extent[1] * 2 )/step) - 1):
+                cx = start_point[0] + step * x
+                cy = start_point[1] + step * y
+                cz = start_point[2] + step * z
+                grid_box = o3d.geometry.AxisAlignedBoundingBox([px, py, pz],[cx, cy, cz])
+                # print('px py pz cx cy cz\n',[px, py, pz],'\n',[cx, cy, cz],'\n')
+                if random.choice([True, False]):
+                    grid = pcd0.crop(grid_box)
+                else:
+                    grid = pcd1.crop(grid_box)
+                grid_list.append(grid)
+                pz = cz
+            pz = start_point[2]
+            py = cy
+        pz = start_point[2]
+        py = start_point[1]
+        px = cx
+    pcd = concate_pcds(grid_list)
+    return pcd
+
+pcd = slice_grid_pcds(pcd0, pcd1, box, 0.3)
+
+# pcd = pcd.crop(box)
+o3d.visualization.draw_geometries([pcd,box_0,box_1,box])
+```
+
 出现的问题是：
 
 - 采样时间很长

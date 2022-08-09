@@ -16,15 +16,14 @@ from core.deep_global_registration import DeepGlobalRegistration
 from config import get_config
 
 # generate pointcloud from RGB-D
-from utils import generate_point_cloud
-from utils import fusion_pcds
-from utils import concate_pcds
+from utils import *
+
 
 
 DATA_DIR = "./data/redwood-livingroom/"
 COLOR_LIST = sorted(os.listdir(DATA_DIR+'image/'))
 DEPTH_LIST = sorted(os.listdir(DATA_DIR+'depth/'))
-STEP = 10
+STEP = 20
 
 # concate pcds DFS
 
@@ -53,9 +52,16 @@ def pcd_fusion_dfs(_pcd_list,dgr):
 	print('=> Concate pcds')
 	# concate pcds
 	# cur_pcd = cur_pcd.voxel_down_sample(voxel_size=0.03)
-	concated_pcd = concate_pcds(left_pcd,right_pcd)
+	concated_pcd = concate_pcds([left_pcd,right_pcd])
+	# mean, corv = concated_pcd.compute_mean_and_covariance()
+	# print(mean, corv)
 
-	# o3d.visualization.draw_geometries([concated_pcd])
+	down_sample = 1e6/len(concated_pcd.points)
+	print('# pcd size:',len(concated_pcd.points), 'down sample:',down_sample)
+	concated_pcd = concated_pcd.random_down_sample(down_sample)
+	# concated_pcd = concated_pcd.normalize_normals()
+
+	o3d.visualization.draw_geometries([concated_pcd])
 	
 	# storage temp
 	o3d.io.write_point_cloud("./tmp/tmp.ply", concated_pcd)

@@ -195,5 +195,27 @@ o3d.visualization.draw_geometries([pcd,box_0,box_1,box])
 
 
 
+尝试将点云做随机抽稀处理
 
+由于两个点云重合后重合的部分密度会相对比较大，其他部分比较稀疏。
 
+如果采用常规的 voxel_down_sample 的方法做抽稀，重合的部分密度还是一样大，其他部分密度还是一样小
+
+如果采用 random_down_sample 的方法，密度大的部分被抽稀的概率会更大，反之会更小
+
+在尝试后：
+
+<img src="photos\20220809004.jpg" alt="20220809004" style="zoom:50%;" />
+
+<img src="photos\20220809005.jpg" alt="20220809005" style="zoom:50%;" />
+
+<img src="photos\20220809006.jpg" alt="20220809006" style="zoom:50%;" />
+
+会发现整体非常混乱，且仍会出现配准判断错误的情况
+
+考虑通过聚类系数的方式判断点云整体的密度
+
+目前测试的函数
+$$
+  {2 \over 3} - {1 \over 3 + 3e^x}
+$$

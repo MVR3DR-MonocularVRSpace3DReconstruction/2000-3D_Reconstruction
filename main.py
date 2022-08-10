@@ -53,15 +53,16 @@ def pcd_fusion_dfs(_pcd_list,dgr):
 	# concate pcds
 	# cur_pcd = cur_pcd.voxel_down_sample(voxel_size=0.03)
 	concated_pcd = concate_pcds([left_pcd,right_pcd])
-	# mean, corv = concated_pcd.compute_mean_and_covariance()
-	# print(mean, corv)
+	mean, cov = concated_pcd.compute_mean_and_covariance()
+	print(mean, cov)
 
 	down_sample = 1e6/len(concated_pcd.points)
 	print('# pcd size:',len(concated_pcd.points), 'down sample:',down_sample)
-	concated_pcd = concated_pcd.random_down_sample(down_sample)
+	concated_pcd = concated_pcd.random_down_sample(0.5)
 	# concated_pcd = concated_pcd.normalize_normals()
-
-	o3d.visualization.draw_geometries([concated_pcd])
+	if wsum < 200:
+		o3d.visualization.draw_geometries([concated_pcd])
+		return left_pcd
 	
 	# storage temp
 	o3d.io.write_point_cloud("./tmp/tmp.ply", concated_pcd)

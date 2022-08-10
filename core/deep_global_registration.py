@@ -282,6 +282,26 @@ class DeepGlobalRegistration:
     print(f'=> Weighted sum {wsum:.2f} {sign} threshold {wsum_threshold}')
 
     T = np.identity(4)
+    # try:
+    #   rot, trans, opt_output = GlobalRegistration(xyz0[corres_idx0],
+    #                                               xyz1[corres_idx1],
+    #                                               weights=weights.detach().cpu(),
+    #                                               break_threshold_ratio=1e-4,
+    #                                               quantization_size=2 *
+    #                                               self.voxel_size,
+    #                                               verbose=False)
+    #   T[0:3, 0:3] = rot.detach().cpu().numpy()
+    #   T[0:3, 3] = trans.detach().cpu().numpy()
+    #   dgr_time = self.reg_timer.toc()
+    #   print(f'=> DGR takes {dgr_time:.2} s')
+
+    # except RuntimeError:
+    #   # Will directly go to Safeguard
+    #   print('###############################################')
+    #   print('# WARNING: SVD failed, weights sum: ', wsum)
+    #   print('# Falling back to Safeguard')
+    #   print('###############################################')
+    
     if wsum >= wsum_threshold:
       print("#  wsum >= wsum_threshold")
       try:

@@ -23,7 +23,14 @@ from utils import *
 DATA_DIR = "./data/redwood-livingroom/"
 COLOR_LIST = sorted(os.listdir(DATA_DIR+'image/'))
 DEPTH_LIST = sorted(os.listdir(DATA_DIR+'depth/'))
-STEP = 20
+STEP = 10
+
+
+# reg first 
+
+
+
+
 
 # concate pcds DFS
 
@@ -45,7 +52,7 @@ def pcd_fusion_dfs(_pcd_list,dgr):
 
 	print('=> Registration..')
 	# registration
-	T, wsum = dgr.register(left_pcd, right_pcd)
+	T, isGoodReg = dgr.register(left_pcd, right_pcd)
 	# print(T)
 	left_pcd.transform(T)
 
@@ -53,14 +60,17 @@ def pcd_fusion_dfs(_pcd_list,dgr):
 	# concate pcds
 	# cur_pcd = cur_pcd.voxel_down_sample(voxel_size=0.03)
 	concated_pcd = concate_pcds([left_pcd,right_pcd])
-	mean, cov = concated_pcd.compute_mean_and_covariance()
-	print(mean, cov)
 
-	down_sample = 1e6/len(concated_pcd.points)
-	print('# pcd size:',len(concated_pcd.points), 'down sample:',down_sample)
-	concated_pcd = concated_pcd.random_down_sample(0.5)
+
+	# mean, cov = concated_pcd.compute_mean_and_covariance()
+	# print(mean, cov)
+
+	# down_sample = 1e6/len(concated_pcd.points)
+	# print('# pcd size:',len(concated_pcd.points), 'down sample:',down_sample)
+	# concated_pcd = concated_pcd.random_down_sample(0.5)
 	# concated_pcd = concated_pcd.normalize_normals()
-	if wsum < 200:
+
+	if not isGoodReg:
 		o3d.visualization.draw_geometries([concated_pcd])
 		return left_pcd
 	
@@ -97,26 +107,6 @@ def pcd_fusion_vol(_pcd_list):
 		)
 	o3d.visualization.draw_geometries([sum_pcd])
 
-	# # sum up pcd
-	# sum_pcd = generate_point_cloud(
-	# 		DATA_DIR+'image/'+_pcd_list[0],
-	# 		DATA_DIR+'depth/'+_pcd_list[0]
-	# 		)
-	# for rgbd_file in _pcd_list:
-	# 	# get pcd
-	# 	tmp_pcd = generate_point_cloud(
-	# 		DATA_DIR+'image/'+rgbd_file,
-	# 		DATA_DIR+'depth/'+rgbd_file
-	# 		)
-	# 	# preprocessing
-	# 	sum_pcd.estimate_normals()
-	# 	tmp_pcd.estimate_normals()
-	# 	print('=> Registration..')
-	# 	# registration
-	# 	T, wsum = dgr.register(sum_pcd, tmp_pcd)
-	# 	# print(T)
-	# 	# sum_pcd.transform(T)
-	# 	sum_pcd = fusion_pcds(_pcd_list[0],_pcd_list[1],T)
 
 
 
@@ -136,15 +126,75 @@ if __name__ == '__main__':
 
 	print("* Total "+str(len(COLOR_LIST))+" RGB-D with "+str(STEP)+" per step, needs "+str(int(len(COLOR_LIST)/STEP))+" steps")
 
-	# fusion pcds DFS
 
-	FUSION_LIST = [i for i in range(0,len(COLOR_LIST),STEP) ]
-	main_pcd =  pcd_fusion_dfs(FUSION_LIST,dgr)
 
-	# fusion pcds VOLUME
+
+
+
+
+
+
+
+
+
+
+
+	# METHOD-3 reg first
+
+	# PCD_LIST = [generate_point_cloud(
+	# 		DATA_DIR+'image/'+COLOR_LIST[i],
+	# 		DATA_DIR+'depth/'+DEPTH_LIST[i]
+	# 		)  for i in range(0,len(COLOR_LIST),STEP)]
+	# print("=> PCD_LIST generated")
+
+	# REG_PCD_LIST = []
+	# current_reg_list = [PCD_LIST[0]]
+	# count = 0
+	# for i in PCD_LIST:
+	# 	print("==> Phase: {}// with {} times reg in total".format(count,len(PCD_LIST)))
+	# 	count += 1
+
+	# 	pcd_base = current_reg_list[-1]
+	# 	pcd_trans = i
+	# 	# preprocessing
+	# 	pcd_base.estimate_normals()
+	# 	pcd_trans.estimate_normals()
+	# 	print('=> Registration..')
+	# 	# registration
+	# 	T, isGoodReg = dgr.register(pcd_trans, pcd_base)
+	# 	if isGoodReg:
+	# 		pcd_trans.transform(T)
+	# 		current_reg_list.append(pcd_trans)
+	# 		print('=> Good Registration [v]')
+	# 	else:
+	# 		REG_PCD_LIST.append(current_reg_list)
+	# 		current_reg_list = [pcd_trans]
+
+	# 		print('=> Bad Registration [x] \n \t append new pcd array')
+
+	# print("## {} sub list generated with length:\n\t{}".format(len(REG_PCD_LIST),[len(i) for i in REG_PCD_LIST]))
+
+
+	# for i in range(len(REG_PCD_LIST)):
+	# 	if len(REG_PCD_LIST[i]) > 3:
+	# 		o3d.visualization.draw_geometries(REG_PCD_LIST[i])
+	# 		concated_pcd = concate_pcds(REG_PCD_LIST[i])
+	# 		o3d.io.write_point_cloud("./tmp/regF/tmp-{:0>5}.ply".format(i), concated_pcd)
+
+
+	# METHOD-1 fusion pcds DFS
+
+	# FUSION_LIST = [i for i in range(0,len(COLOR_LIST),STEP) ]
+	# main_pcd =  pcd_fusion_dfs(FUSION_LIST,dgr)
+
+
+
+	# METHOD-2 fusion pcds VOLUME
 
 	# FUSION_LIST = [COLOR_LIST[i][:-4] for i in range(0,len(COLOR_LIST),STEP) ]
 	# # print(FUSION_LIST)
 	# main_pcd = pcd_fusion_vol(FUSION_LIST)
 
-	o3d.visualization.draw_geometries([main_pcd])
+
+
+	# o3d.visualization.draw_geometries([REG_PCD_LIST])

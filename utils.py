@@ -96,22 +96,22 @@ def get_max_distance(min0:float,max0:float,min1:float,max1:float):
     return False
 
 def get_max_box_corner(box_0,box_1):
-    min_x0 = np.argmin(box_0(bp_0)[:,0])
-    min_y0 = np.argmin(box_0(bp_0)[:,1])
-    min_z0 = np.argmin(box_0(bp_0)[:,2])
+    min_x0 = np.argmin(box_0[:,0])
+    min_y0 = np.argmin(box_0[:,1])
+    min_z0 = np.argmin(box_0[:,2])
 
-    max_x0 = np.argmax(box_0(bp_0)[:,0])
-    max_y0 = np.argmax(box_0(bp_0)[:,1])
-    max_z0 = np.argmax(box_0(bp_0)[:,2])
+    max_x0 = np.argmax(box_0[:,0])
+    max_y0 = np.argmax(box_0[:,1])
+    max_z0 = np.argmax(box_0[:,2])
 
 
-    min_x1 = np.argmin(box_1(bp_1)[:,0])
-    min_y1 = np.argmin(box_1(bp_1)[:,1])
-    min_z1 = np.argmin(box_1(bp_1)[:,2])
+    min_x1 = np.argmin(box_1[:,0])
+    min_y1 = np.argmin(box_1[:,1])
+    min_z1 = np.argmin(box_1[:,2])
 
-    max_x1 = np.argmax(box_1(bp_1)[:,0])
-    max_y1 = np.argmax(box_1(bp_1)[:,1])
-    max_z1 = np.argmax(box_1(bp_1)[:,2])
+    max_x1 = np.argmax(box_1[:,0])
+    max_y1 = np.argmax(box_1[:,1])
+    max_z1 = np.argmax(box_1[:,2])
 
     x_min, x_max = get_max_distance(min_x0, max_x0, min_x1, max_x1)
     y_min, y_max = get_max_distance(min_y0, max_y0, min_y1, max_y1)

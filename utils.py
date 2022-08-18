@@ -34,7 +34,7 @@ def generate_point_cloud_with_matrix(pic1:str,pic2:str,M):
     pcd.transform([[1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1]])
     return pcd
 
-def concate_pcds(pcd_list):
+def merge_pcds(pcd_list):
 
 
     tmp_points = np.concatenate(tuple([i.points for i in pcd_list]), axis=0)

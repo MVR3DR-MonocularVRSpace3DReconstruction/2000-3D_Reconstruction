@@ -6,6 +6,7 @@
 
 
 from ast import main
+from genericpath import isfile
 import os
 from turtle import right
 from urllib.request import urlretrieve
@@ -16,11 +17,13 @@ from core.deep_global_registration import DeepGlobalRegistration
 from config import get_config
 
 # generate pointcloud from RGB-D
+import matplotlib.pyplot as plt
+import matplotlib
 from utils import *
 
 
 
-DATA_DIR = "./data/redwood-livingroom/"
+DATA_DIR = "./data/redwood-lobby/"
 COLOR_LIST = sorted(os.listdir(DATA_DIR+'image/'))
 DEPTH_LIST = sorted(os.listdir(DATA_DIR+'depth/'))
 STEP = 10
@@ -32,7 +35,7 @@ STEP = 10
 
 
 
-# concate pcds DFS
+# merge pcds DFS
 
 def pcd_fusion_dfs(_pcd_list,dgr):
 	print("=> Current list: ",_pcd_list)
@@ -56,31 +59,31 @@ def pcd_fusion_dfs(_pcd_list,dgr):
 	# print(T)
 	left_pcd.transform(T)
 
-	print('=> Concate pcds')
-	# concate pcds
+	print('=> merge pcds')
+	# merge pcds
 	# cur_pcd = cur_pcd.voxel_down_sample(voxel_size=0.03)
-	concated_pcd = concate_pcds([left_pcd,right_pcd])
+	merged_pcd = merge_pcds([left_pcd,right_pcd])
 
 
-	# mean, cov = concated_pcd.compute_mean_and_covariance()
+	# mean, cov = merged_pcd.compute_mean_and_covariance()
 	# print(mean, cov)
 
-	# down_sample = 1e6/len(concated_pcd.points)
-	# print('# pcd size:',len(concated_pcd.points), 'down sample:',down_sample)
-	# concated_pcd = concated_pcd.random_down_sample(0.5)
-	# concated_pcd = concated_pcd.normalize_normals()
+	# down_sample = 1e6/len(merged_pcd.points)
+	# print('# pcd size:',len(merged_pcd.points), 'down sample:',down_sample)
+	# merged_pcd = merged_pcd.random_down_sample(0.5)
+	# merged_pcd = merged_pcd.normalize_normals()
 
 	if not isGoodReg:
-		o3d.visualization.draw_geometries([concated_pcd])
+		o3d.visualization.draw_geometries([merged_pcd])
 		return left_pcd
 	
 	# storage temp
-	o3d.io.write_point_cloud("./tmp/tmp.ply", concated_pcd)
+	o3d.io.write_point_cloud("./tmp/tmp.ply", merged_pcd)
 
-	return concated_pcd
+	return merged_pcd
 
 
-# concate pcds volume
+# merge pcds volume
 
 def pcd_fusion_vol(_pcd_list):
 	print("=> Current list: ",_pcd_list[0],_pcd_list[1])
@@ -108,6 +111,25 @@ def pcd_fusion_vol(_pcd_list):
 	o3d.visualization.draw_geometries([sum_pcd])
 
 
+# set up matplotlib
+is_ipython = 'inline' in matplotlib.get_backend()
+if is_ipython:
+    from IPython import display
+
+#draw graph
+plt.ion()
+
+def plot_durations(i, y):
+    plt.figure(1)
+#     plt.clf() 此时不能调用此函数，不然之前的点将被清空。
+    plt.subplot(111)
+    plt.plot(i, y, '.')
+
+    plt.pause(0.001)  # pause a bit so that plots are updated
+    if is_ipython:
+        display.clear_output(wait=True)
+        display.display(plt.gcf())
+
 
 
 
@@ -129,12 +151,99 @@ if __name__ == '__main__':
 
 
 
+	# METHOD-5 DFS flex duration
 
 
 
 
 
 
+
+
+
+
+
+
+
+	# METHOD-4 flex duration
+	MAX_DURATION = 100
+	REDUCE = 0.75
+
+	print("=> PCD_LIST generated")
+	
+	curr_pcd = 0
+	duration = MAX_DURATION
+	REG_PCD_LIST = [generate_point_cloud(
+			DATA_DIR+'image/'+COLOR_LIST[curr_pcd],
+			DATA_DIR+'depth/'+DEPTH_LIST[curr_pcd]
+			)]
+	#draw 
+	X = []
+	Y = []
+
+	count = 0
+	T = np.eye(4)
+	while curr_pcd != len(COLOR_LIST)-1:
+		print("==> Current pcd: [{}] \t Reg pcd: [{}] \tTotal pcd: [0-{}]".format(curr_pcd,curr_pcd+duration,len(COLOR_LIST)-1))
+		
+		#avoid endless loop
+		if duration == 0:
+			print("## WARNING endless loop in no valid registration")
+			o3d.visualization.draw_geometries([pcd_base[-1],pcd_trans])
+			cin = input()
+			if cin == 'q':
+				break
+			if cin == 'c':
+			# enlarge the scan range may find new fit pcds
+				duration = 220
+			
+
+		pcd_base = REG_PCD_LIST[-1]
+		pcd_base.voxel_down_sample(0.8)
+		pcd_trans = generate_point_cloud(
+			DATA_DIR+'image/'+COLOR_LIST[curr_pcd+duration],
+			DATA_DIR+'depth/'+DEPTH_LIST[curr_pcd+duration]
+			)
+
+		# pcd_trans.transform(T)
+		
+		# preprocessing
+
+		# pcd_base.estimate_normals()
+		pcd_trans.estimate_normals()
+
+		print('=> Registration..')
+		# registration
+		T, isGoodReg = dgr.register(pcd_trans, pcd_base)
+		if isGoodReg:
+			print('=> Good Registration [v]\n\t success duration <{}> '.format(duration))
+			pcd_trans.transform(T)
+			REG_PCD_LIST.append(pcd_trans)
+
+			#log
+			X.append(count)
+			Y.append(duration)
+			plot_durations(X, Y)
+
+
+			curr_pcd += duration
+			# avoid range overflow
+			if curr_pcd + MAX_DURATION <= len(COLOR_LIST)-1:
+				duration = MAX_DURATION
+			else:
+				duration = len(COLOR_LIST)-1-curr_pcd
+
+			count += 1
+			# o3d.visualization.draw_geometries([REG_PCD_LIST[-1],REG_PCD_LIST[-2]])
+			
+		else:
+			duration = int(duration * REDUCE)
+			print('=> Bad Registration [x]\n\t set duration into "{}"'.format(duration))
+
+	print("## Registration finished")
+	merged_pcd = merge_pcds(REG_PCD_LIST)
+	o3d.io.write_point_cloud("./tmp/tmp.ply", merged_pcd)
+	o3d.visualization.draw_geometries([merged_pcd])
 
 
 
@@ -178,8 +287,8 @@ if __name__ == '__main__':
 	# for i in range(len(REG_PCD_LIST)):
 	# 	if len(REG_PCD_LIST[i]) > 3:
 	# 		o3d.visualization.draw_geometries(REG_PCD_LIST[i])
-	# 		concated_pcd = concate_pcds(REG_PCD_LIST[i])
-	# 		o3d.io.write_point_cloud("./tmp/regF/tmp-{:0>5}.ply".format(i), concated_pcd)
+	# 		merged_pcd = merge_pcds(REG_PCD_LIST[i])
+	# 		o3d.io.write_point_cloud("./tmp/regF/tmp-{:0>5}.ply".format(i), merged_pcd)
 
 
 	# METHOD-1 fusion pcds DFS
@@ -194,7 +303,6 @@ if __name__ == '__main__':
 	# FUSION_LIST = [COLOR_LIST[i][:-4] for i in range(0,len(COLOR_LIST),STEP) ]
 	# # print(FUSION_LIST)
 	# main_pcd = pcd_fusion_vol(FUSION_LIST)
-
 
 
 	# o3d.visualization.draw_geometries([REG_PCD_LIST])

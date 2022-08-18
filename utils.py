@@ -3,6 +3,7 @@ from time import time
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 import open3d as o3d
+import open3d.core as o3c
 
 def generate_point_cloud(pic1:str,pic2:str):
     # print("Read Redwood dataset")
@@ -150,3 +151,14 @@ def get_max_box_center_extent(box_0,box_1):
     z_min, z_max = get_max_distance(min_z0, max_z0, min_z1, max_z1)
     # print(x_min, x_max,y_min, y_max,z_min, z_max)
     return np.array([(x_max + x_min)/2, (y_max + y_min)/2, (z_max + z_min)/2]),np.array([(x_max - x_min)/2, (y_max - y_min)/2, (z_max - z_min)/2])
+
+def ply_double_to_float(path:str):
+    try:
+        pcd0 = o3d.t.io.read_point_cloud(path)
+        pcd0.point["positions"]= o3c.Tensor(pcd0.point["positions"].numpy().astype('float32'))
+        o3d.t.io.write_point_cloud(path, pcd0, compressed=True)
+        return True
+    except:
+        return False
+
+

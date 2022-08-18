@@ -287,7 +287,7 @@ class DeepGlobalRegistration:
     isGoodReg = True
 
     if wsum >= wsum_threshold:
-      print("#  wsum >= wsum_threshold")
+      # print("#  wsum >= wsum_threshold")
       try:
         rot, trans, opt_output = GlobalRegistration(xyz0[corres_idx0],
                                                     xyz1[corres_idx1],
@@ -311,7 +311,7 @@ class DeepGlobalRegistration:
 
     else:
       # > Case 1: Safeguard RANSAC + (Optional) ICP
-      print("#  wsum < wsum_threshold")
+      # print("#  wsum < wsum_threshold")
       pcd0 = make_open3d_point_cloud(xyz0)
       pcd1 = make_open3d_point_cloud(xyz1)
       T = self.safeguard_registration(pcd0,

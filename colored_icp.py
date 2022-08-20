@@ -26,7 +26,7 @@ def icp_registration(source, target, max_corres_dist):
 def colored_icp_registration(source, target, voxel_size):
     print("=> Colored ICP registration")
     voxel_radius = [5*voxel_size, 3*voxel_size, voxel_size]
-    max_iter = [60, 35, 20]
+    max_iter = [100, 60, 35]# [60, 35, 20]
     T = np.identity(4)
     for scale in range(3):
         max_it = max_iter[scale]
@@ -51,7 +51,7 @@ def colored_icp_registration(source, target, voxel_size):
             continue
         T = result.transformation
         print("result:\n\t",result)
-    print("T:\n\t",T)
+    print("T:\n",T)
     # draw_registration_result(source, target, T, color=True)
     return T
 

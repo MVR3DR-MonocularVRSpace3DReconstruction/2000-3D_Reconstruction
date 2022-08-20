@@ -1,26 +1,27 @@
 
-from bz2 import compress
 import os
+import re
 import numpy as np
-
-import open3d as o3d
-# generate pointcloud from RGB-D
-import matplotlib.pyplot as plt
-import matplotlib
-from utils import *
-
-import pcd2mesh
-
-from plyfile import PlyData, PlyElement
 import pandas as pd
-
+import open3d as o3d
 import open3d.core as o3c
+import matplotlib
+import matplotlib.pyplot as plt
 
 from core.deep_global_registration import DeepGlobalRegistration
 from config import get_config
 
+from plyfile import PlyData, PlyElement
+
+from utils import *
+import pcd2mesh
 from colored_icp import *
 
+
+'''
+color icp fusion
+
+'''
 
 DATA_DIR = "./data/redwood-livingroom/"
 COLOR_LIST = sorted(os.listdir(DATA_DIR+'image/'))
@@ -58,7 +59,17 @@ target.transform(T)
 
 o3d.visualization.draw_geometries([source,target])
 
-T = colored_icp(target,source)
+# color icp
+
+# T = colored_icp(target,source)
+
+# target.transform(T)
+
+# o3d.visualization.draw_geometries([source,target])
+
+# color icp in cpp
+
+T = color_icp_cpp(target,source)
 
 target.transform(T)
 

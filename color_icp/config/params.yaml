@@ -1,8 +1,8 @@
 # Parameter List
 # source_cloud: "../data/cloud_bin_00_easy.pcd"
 # target_cloud: "../data/cloud_bin_01.pcd"
-source_cloud: "../data/pcd_0.ply"
-target_cloud: "../data/pcd_1.ply"
+source_cloud: "../data/pcd_trans.ply"
+target_cloud: "../data/pcd_base.ply"
 downsample: true
 estimate_normal: true
 voxel_resolution: 0.01

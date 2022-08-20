@@ -94,8 +94,8 @@ if __name__ == '__main__':
 			pcd_trans.transform(T)
 
 			current_reg_list.append(pcd_trans)
-			
-			o3d.visualization.draw_geometries(REG_PCD_LIST[i])
+
+			# o3d.visualization.draw_geometries(REG_PCD_LIST[i])
 
 			print('=> Good Registration [v]\n\n')
 		else:

@@ -106,7 +106,7 @@ ColorICP::ColorICP ()
     PCL_ERROR("no registration method is selected");
   std::cout << "Estimated transformation " << std::endl << transformation_ << std::endl;
 
-  ofstream out("../data/Estimated_transformation");
+  ofstream out("../data/Estimated_transformation.txt");
   out << transformation_;
   out.close();
 

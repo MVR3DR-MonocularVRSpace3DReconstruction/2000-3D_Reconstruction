@@ -7,7 +7,7 @@ import open3d as o3d
 
 import os
 
-from camera_pose import read_trajectory
+from utils import read_trajectory
 
 DATA_DIR = "./data/redwood-livingroom/"
 POSE_FILE = "livingroom.log"
@@ -38,7 +38,7 @@ for i in range(0,len(camera_poses),STEP):
 
 pcd = volume.extract_point_cloud()
 o3d.visualization.draw_geometries([pcd])
-o3d.io.write_point_cloud("./tmp/output_camera_pose.ply", pcd)
+o3d.io.write_point_cloud("./tmp/tmp_camera_pose.ply", pcd)
 
 # print("Extract a triangle mesh from the volume and visualize it.")
 # mesh = volume.extract_triangle_mesh()

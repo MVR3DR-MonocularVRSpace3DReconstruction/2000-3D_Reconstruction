@@ -1,9 +1,39 @@
+import os
+import re
+import math
 import numpy as np
 from time import time
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 import open3d as o3d
 import open3d.core as o3c
+
+
+class CameraPose:
+
+    def __init__(self, meta, mat):
+        self.metadata = meta
+        self.pose = mat
+
+    def __str__(self):
+        return 'Metadata : ' + ' '.join(map(str, self.metadata)) + '\n' + \
+            "Pose : " + "\n" + np.array_str(self.pose)
+
+
+def read_trajectory(filename):
+    traj = []
+    with open(filename, 'r') as f:
+        metastr = f.readline()
+        while metastr:
+            metadata = list(map(int, metastr.split()))
+            mat = np.zeros(shape=(4, 4))
+            for i in range(4):
+                matstr = f.readline()
+                mat[i, :] = np.fromstring(matstr, dtype=float, sep=' \t')
+            traj.append(CameraPose(metadata, mat))
+            metastr = f.readline()
+    return traj
+
 
 def generate_point_cloud(pic1:str,pic2:str):
     # print("Read Redwood dataset")
@@ -161,4 +191,25 @@ def ply_double_to_float(path:str):
     except:
         return False
 
-
+def color_icp_cpp(pcd_trans, pcd_base):
+    T = np.identity(4)
+    print("=> Start color icp in cpp")
+    # save temp ply file
+    o3d.io.write_point_cloud("./color_icp/data/pcd_trans.ply", pcd_trans)
+    o3d.io.write_point_cloud("./color_icp/data/pcd_base.ply", pcd_base)
+    # set ply headers' format
+    ply_double_to_float("./color_icp/data/pcd_trans.ply")
+    ply_double_to_float("./color_icp/data/pcd_base.ply")
+    # run color icp
+    os.chdir("./color_icp/build/")
+    os.system("./color_icp")
+    print("=> Colored ICP finished")
+    # read results
+    os.chdir("../../")
+    T_file = open('color_icp/data/Estimated_transformation.txt','r').read()
+    # print(T_file)
+    # print(np.fromstring(T_file,dtype='float'))
+    T_lines = T_file.split('\n')
+    T = np.asarray([[float(num) for num in re.split('[ ]+',line.strip(' '))] for line in T_lines])
+    # print(T)
+    return T

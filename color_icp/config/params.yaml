@@ -1,6 +1,4 @@
 # Parameter List
-# source_cloud: "../data/cloud_bin_00_easy.pcd"
-# target_cloud: "../data/cloud_bin_01.pcd"
 source_cloud: "../data/pcd_trans.ply"
 target_cloud: "../data/pcd_base.ply"
 downsample: true
@@ -10,8 +8,8 @@ normal_est_radius: 0.05
 search_radius: 0.04 #0.04
 
 icp_method: color    # pcl, classic, color
-icp_max_corres_dist: 0.05 #0.05
-icp_transformation_epsilon: 0.000001  # 0.001 meter and 0.256 degree
+icp_max_corres_dist: 0.5 #0.05
+icp_transformation_epsilon: 0.001  # 0.001 meter and 0.256 degree
 icp_max_iterations: 100  #50
 color_icp_lambda: 0.968  # default 0.968 as in the paper
 color_weight: average    # average, srgb, ntsc

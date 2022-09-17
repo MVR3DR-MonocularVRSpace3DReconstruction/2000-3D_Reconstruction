@@ -113,7 +113,7 @@ if __name__ == '__main__':
 			pcd_trans.transform(T)
 
 			# color icp
-			T = color_icp_cpp(pcd_trans,pcd_base)
+			T = colored_icp(pcd_trans,pcd_base)
 			pcd_trans.transform(T)
 
 			# o3d.visualization.draw_geometries([pcd_trans,pcd_base])

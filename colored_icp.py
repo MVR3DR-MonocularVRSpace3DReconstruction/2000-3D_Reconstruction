@@ -26,7 +26,7 @@ def icp_registration(source, target, max_corres_dist):
 def colored_icp_registration(source, target, voxel_size):
     print("=> Colored ICP registration")
     voxel_radius = [5*voxel_size, 3*voxel_size, voxel_size]
-    max_iter = [100, 60, 35]# [60, 35, 20]
+    max_iter = [60, 35, 20]# [60, 35, 20]
     T = np.identity(4)
     for scale in range(3):
         max_it = max_iter[scale]
@@ -44,8 +44,8 @@ def colored_icp_registration(source, target, voxel_size):
                 T,
                 o3d.pipelines.registration.TransformationEstimationForColoredICP(),
                 o3d.pipelines.registration.ICPConvergenceCriteria(relative_fitness=1e-6,
-                                                                relative_rmse=1e-6,
-                                                                max_iteration=max_it))
+                                                                  relative_rmse=1e-6,
+                                                                  max_iteration=max_it))
         except Exception as e:
             print("Error: \n",e)
             continue
@@ -55,7 +55,7 @@ def colored_icp_registration(source, target, voxel_size):
     # draw_registration_result(source, target, T, color=True)
     return T
 
-def colored_icp(target, source, voxel_size = 0.01):
+def colored_icp(target, source, voxel_size = 0.05):
     print("\n==> Start colored icp")
     # unset env variable to re-enable OpenGL 3.3 in VM environments
     if 'SVGA_VGPU10' in os.environ:

@@ -60,9 +60,9 @@ def generate_point_cloud_with_camera_pose(image_dir:str, depth_dir:str, camera_p
     # random noise
 
     random.seed(time())
-    camera_pose[0] += random.randint(-5000,5000) / 100000
-    camera_pose[1] += random.randint(-5000,5000) / 100000
-    camera_pose[2] += random.randint(-5000,5000) / 100000
+    camera_pose[0][3] += random.randint(-5000,5000) / 10000
+    camera_pose[1][3] += random.randint(-5000,5000) / 10000
+    camera_pose[2][3] += random.randint(-5000,5000) / 10000
     rgbd = o3d.geometry.RGBDImage.create_from_color_and_depth(color, depth,convert_rgb_to_intensity=False)
     pcd = o3d.geometry.PointCloud.create_from_rgbd_image(
         rgbd,

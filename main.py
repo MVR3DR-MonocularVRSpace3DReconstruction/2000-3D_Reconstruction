@@ -110,7 +110,7 @@ def pcd_fusion_dfs(_pcd_dix,dgr):
 	merged_pcd.voxel_down_sample(0.05)
 
 	# store cache and return
-	o3d.io.write_point_cloud("./tmp/dfs/{}-{}.ply".format(_pcd_dix[0], _pcd_dix[-1]), merged_pcd)
+	o3d.io.write_point_cloud("./outputs/dfs/{}-{}.ply".format(_pcd_dix[0], _pcd_dix[-1]), merged_pcd)
 	return merged_pcd
 
 
@@ -122,8 +122,8 @@ if __name__ == '__main__':
 	###########################################################
 	# refresh cache
 	###########################################################
-	os.system("rm -rf ./tmp/dfs")
-	os.system("mkdir ./tmp/dfs")
+	os.system("rm -rf ./outputs/dfs")
+	os.system("mkdir ./outputs/dfs")
 	config = get_config()
 	if config.weights is None:
 		config.weights = "./pth/ResUNetBN2C-feat32-3dmatch-v0.05.pth"

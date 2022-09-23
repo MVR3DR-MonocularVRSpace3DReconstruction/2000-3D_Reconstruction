@@ -45,7 +45,7 @@ Eigen::Vector3f GaussNewton (Eigen::Matrix2Xf& data, Eigen::Vector3f& guess) {
       Jacobian(2, i) = std::exp(a*x*x + b*x + c);
     }
     var += (Jacobian * Jacobian.transpose()).inverse() * Jacobian * Residual;
-    std::cout << "current var = " << var << std::endl;
+    std::cout << "=> Current var = " << var << std::endl;
   }
   return var;
 }
@@ -54,10 +54,10 @@ Eigen::Vector3f GaussNewton (Eigen::Matrix2Xf& data, Eigen::Vector3f& guess) {
 int main(int argc, char** argv){
   // initialization
   auto data = dataGeneration();
-  std::cout << "data = " << std::endl << data << std::endl;
+  std::cout << "=> Data = " << std::endl << data << std::endl;
 
   // solve by non-linear optimization
   Eigen::Vector3f guess (0.5, 2.2, 3.4); // a, b, c
   auto result = GaussNewton (data, guess);
-  std::cout << "final result = " << result << std::endl;
+  std::cout << "=> final result = " << result << std::endl;
 }

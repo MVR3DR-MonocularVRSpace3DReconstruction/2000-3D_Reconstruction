@@ -19,7 +19,7 @@ from colored_icp import colored_icp
 def load_point_clouds(data_dir = "./data/redwood-livingroom/",
                       camera_pose_file = "livingroom.log",
                       step = 10,
-                      voxel_size=0.01):
+                      voxel_size=0.05):
     image_dir = sorted(os.listdir(data_dir+'image/'))
     depth_dir = sorted(os.listdir(data_dir+'depth/'))
     camera_poses = read_trajectory("{}{}".format(data_dir, camera_pose_file))
@@ -39,6 +39,21 @@ def load_point_clouds(data_dir = "./data/redwood-livingroom/",
     print("# Load {} point clouds from {}".format(len(pcds),data_dir))
     return pcds
 
+
+def read_point_clouds(data_dir = "./data/redwood-livingroom/",down_sample=0.05):
+    pcds = []
+    
+    for pcd in sorted(os.listdir(data_dir+'fragments/')):
+        if ".ply" in pcd:
+            temp_pcd = o3d.io.read_point_cloud(data_dir+'fragments/'+pcd)
+            temp_pcd.random_down_sample(down_sample)
+            temp_pcd.estimate_normals()
+            temp_pcd.transform([[1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1]])
+            
+            pcds.append(temp_pcd)
+    print("* Total "+str(len(pcds))+" point clouds loaded. ")
+    return pcds
+
 ###########################################################
 # Pair Registration - point to plane 
 ###########################################################
@@ -48,19 +63,19 @@ def load_point_clouds(data_dir = "./data/redwood-livingroom/",
 def icp_point2plane_registration(source, target):
     print("=> Apply point-to-plane ICP")
     voxel_radius = [15*voxel_size, 3*voxel_size, 1.5*voxel_size]
-    # max_iter = [60, 35, 20]# [60, 35, 20]
+    max_iter = [60, 35, 20]# [60, 35, 20]
     _transformation_icp = np.identity(4)
     for scale in range(3):
-        # max_it = max_iter[scale]
+        max_it = max_iter[scale]
         radius = voxel_radius[scale]
         # print("=> scale_level = {0}, voxel_size = {1}, max_iter = {2}".format(scale, radius, max_it))
         print("=> scale_level = {0}, voxel_size = {1}".format(scale, radius))
         result = o3d.pipelines.registration.registration_icp(
             source, target, radius, _transformation_icp,
             o3d.pipelines.registration.TransformationEstimationPointToPlane(),
-            # o3d.pipelines.registration.ICPConvergenceCriteria(relative_fitness=1e-6,
-            #                                                         relative_rmse=1e-6,
-            #                                                         max_iteration=max_it)
+            o3d.pipelines.registration.ICPConvergenceCriteria(relative_fitness=1e-6,
+                                                                    relative_rmse=1e-6,
+                                                                    max_iteration=max_it)
                                                                     )
         _transformation_icp = result.transformation
     _information_icp = o3d.pipelines.registration.get_information_matrix_from_point_clouds(
@@ -171,30 +186,26 @@ def deep_global_registration(source, target):
         source, target, correspondence_distance,
         _transformation_dgr)
     # o3d.visualization.draw_geometries([source, target.transform(_transformation_dgr)])
-    return _transformation_dgr, _information_dgr
+    return _transformation_dgr, _information_dgr, not isGoodReg
 
 ###########################################################
 # Combination Registration
 ###########################################################
 
 def combination_registration(source, target):
-    print("no transform")
-    # o3d.visualization.draw_geometries([source, target])
-    transformation_dgr, _ = deep_global_registration(source, target)
-    # tmp = source
-    print("dgr tranformed")
-    # o3d.visualization.draw_geometries([source.transform(transformation_dgr), target])
-    transformation_cicp, _ = color_icp_registration_by_cpp(source.transform(transformation_dgr), target)
-    print("cicp transformed")
-    # o3d.visualization.draw_geometries([source.transform(transformation_cicp), target])
-    transformation = np.dot( transformation_dgr, transformation_cicp)
-    # print(transformation_dgr,transformation_cicp,transformation,np.dot(transformation_dgr, transformation_cicp))
-    # o3d.visualization.draw_geometries([tmp.transform(transformation), target])
-    # input()
+    transformation_dgr, _, certain = deep_global_registration(source, target)
+    temp = merge_pcds([source])
+    temp = temp.transform(transformation_dgr)
+    transformation_cicp, _ = colored_icp_registration(temp, target)
+    transformation = np.dot(transformation_cicp, transformation_dgr)
+    # print(transformation_cicp,'\n', transformation_dgr,'\n', transformation)
+    # source.paint_uniform_color([1, 0, 0]) # Red
+    # temp.paint_uniform_color([0, 1, 0]) # Green
+    # target.paint_uniform_color([0, 0, 1]) # Blue
     information = o3d.pipelines.registration.get_information_matrix_from_point_clouds(
         source, target, correspondence_distance,
         transformation)
-    return transformation, information
+    return transformation, information, not certain
 
 ###########################################################
 # Multiway Full Registration
@@ -212,9 +223,10 @@ def full_registration(pcds, correspondence_range_ratio):
                 source_id, target_id, n_pcds-1, min(n_pcds, int(source_id + n_pcds * correspondence_range_ratio)), int(n_pcds * correspondence_range_ratio)))
             # first reg
             # o3d.visualization.draw_geometries([pcds[source_id], pcds[target_id]])
-            transformation, information = combination_registration(
+            transformation, information, uncertain = deep_global_registration(
                 pcds[source_id], pcds[target_id])
-            # o3d.visualization.draw_geometries([pcds[source_id].transform(transformation), pcds[target_id]])
+            # temp = merge_pcds([pcds[source_id]])
+            # o3d.visualization.draw_geometries([temp.transform(transformation), pcds[target_id]])
             print("==> Build o3d.pipelines.registration.PoseGraph")
             if target_id == source_id + 1:  # odometry case
                 odometry = np.dot(transformation, odometry)
@@ -226,7 +238,7 @@ def full_registration(pcds, correspondence_range_ratio):
                                                              target_id,
                                                              transformation,
                                                              information,
-                                                             uncertain=True)) # False
+                                                             uncertain=False)) # False
             else:  # loop closure case
                 pose_graph.edges.append(
                     o3d.pipelines.registration.PoseGraphEdge(source_id,
@@ -237,6 +249,30 @@ def full_registration(pcds, correspondence_range_ratio):
 
     print("===> FULL REG FIN!!!")
     return pose_graph
+###########################################################
+# Run Once Registration
+###########################################################
+
+def run_once_registration(pcds, params):
+    print("===> Start Run Once REG.")
+    pose_graph = o3d.pipelines.registration.PoseGraph()
+    odometry = np.identity(4)
+    pose_graph.nodes.append(o3d.pipelines.registration.PoseGraphNode(odometry))
+    n_pcds = len(pcds)
+    for source_id in range(0,n_pcds-1):
+        print("==> Source: [{0}//{1}] with target: [{2}]".format(source_id, n_pcds-1, source_id+1))
+        transformation, information, uncertain = combination_registration(pcds[source_id], pcds[source_id+1])
+        odometry = np.dot(transformation, odometry)
+        pose_graph.nodes.append(
+            o3d.pipelines.registration.PoseGraphNode(
+                np.linalg.inv(odometry)))
+        pose_graph.edges.append(
+            o3d.pipelines.registration.PoseGraphEdge(source_id,
+                                                    source_id+1,
+                                                    transformation,
+                                                    information,
+                                                    uncertain=True)) # False
+    return pose_graph
 
 ###########################################################
 # Main process
@@ -245,47 +281,51 @@ def full_registration(pcds, correspondence_range_ratio):
 start_time = time.time()
 
 voxel_size = 0.01
-pcds_down = load_point_clouds()
+# pcds_down = load_point_clouds(
+#     data_dir = "./data/redwood-livingroom/",
+#     camera_pose_file = "livingroom.log",
+#     step = 10,
+#     voxel_size=voxel_size)
 
+pcds_down = read_point_clouds(data_dir = "./data/redwood-livingroom/",down_sample=0.05)
 pause_time = time.time()
 o3d.visualization.draw_geometries(pcds_down)
 pause_time = time.time() - pause_time
 
-print("Full registration ...")
+print("\n\n# Full registration ...")
 correspondence_distance = voxel_size * 1.5 # 1.5
 # with o3d.utility.VerbosityContextManager(o3d.utility.VerbosityLevel.Debug) as cm:
-pose_graph = full_registration(pcds_down, 15/len(pcds_down))                      
+pose_graph = full_registration(pcds_down, 0.5) # 15/len(pcds_down)                     
 ########
 
-print("Optimizing PoseGraph ...")
+print("\n\n# Optimizing PoseGraph ...")
 option = o3d.pipelines.registration.GlobalOptimizationOption(
     max_correspondence_distance=correspondence_distance,
     edge_prune_threshold=0.25,
-    reference_node=0,# len(pcds_down)//2
+    reference_node=len(pcds_down)//2,# len(pcds_down)//2
     preference_loop_closure=2.0)
 
 
-with o3d.utility.VerbosityContextManager(o3d.utility.VerbosityLevel.Debug) as m:
+with o3d.utility.VerbosityContextManager(o3d.utility.VerbosityLevel.Debug) as cm:
     o3d.pipelines.registration.global_optimization(
         pose_graph,
-        o3d.pipelines.registration.GlobalOptimizationLevenbergMarquardt(),
-        # o3d.pipelines.registration.GlobalOptimizationGaussNewton(),
+        # o3d.pipelines.registration.GlobalOptimizationLevenbergMarquardt(),
+        o3d.pipelines.registration.GlobalOptimizationGaussNewton(),
         o3d.pipelines.registration.GlobalOptimizationConvergenceCriteria(),
         option)
 ########
 
-print("Pose graph length: ",pose_graph)
-print("Transform points and display")
+print("\n\n# Pose graph length: ",pose_graph)
+print("\n\n# Transform points and display")
 for point_id in range(len(pcds_down)):
     # print(pose_graph.nodes[point_id].pose)
     pcds_down[point_id].transform(pose_graph.nodes[point_id].pose)
 
 end_time = time.time()
 time_cost = end_time-start_time-pause_time
-print("## Total cost {}s = {}m{}s.".format(
+print("\n## Total cost {}s = {}m{}s.".format(
     time_cost, int((time_cost)//60), int(time_cost - (time_cost)//60*60)))
 o3d.visualization.draw_geometries(pcds_down)
 
 pcd_combined = merge_pcds(pcds_down)
 o3d.io.write_point_cloud("./outputs/multiway_registration.ply", pcd_combined)
-# o3d.visualization.draw_geometries([pcd_combined])

@@ -82,9 +82,9 @@ ColorICP::ColorICP ()
   std::string src_filename = params_["source_cloud"].As<std::string> ();
   std::string tar_filename = params_["target_cloud"].As<std::string> ();
   if (my::loadPointCloud<PointT> (src_filename, *source_cloud_))
-    std::cout << "[source] Loaded " << source_cloud_->size() << " points\n";
+    std::cout << "==> [source] Loaded " << source_cloud_->size() << " points\n";
   if (my::loadPointCloud<PointT> (tar_filename, *target_cloud_))
-    std::cout << "[target] Loaded " << target_cloud_->size() << " points\n";
+    std::cout << "==> [target] Loaded " << target_cloud_->size() << " points\n";
 
   // pre-processing
   removeNaNPoints (source_cloud_);
@@ -104,7 +104,8 @@ ColorICP::ColorICP ()
     transformation_ = ColorICPRegistration(source_cloud_, target_cloud_);
   else
     PCL_ERROR("no registration method is selected");
-  std::cout << "Estimated transformation " << std::endl << transformation_ << std::endl;
+
+  // std::cout << "Estimated transformation " << std::endl << transformation_ << std::endl;
 
   ofstream out("../data/Estimated_transformation.txt");
   out << transformation_;
@@ -123,9 +124,9 @@ ColorICP::ColorICP ()
 void ColorICP::removeNaNPoints (const PointCloudPtr& cloud) {
   std::vector<int> nan_idx;
   pcl::removeNaNFromPointCloudBruteForce (*cloud, *cloud, nan_idx);
-  std::cout << "Contained " << cloud->size () << " points after removing NaN points\n";
+  std::cout << "=> Contained " << cloud->size () << " points after removing NaN points\n";
   pcl::removeNaNRGBFromPointCloud (*cloud, *cloud, nan_idx);
-  std::cout << "Contained " << cloud->size () << " points after removing NaN RGB points\n";
+  std::cout << "=> Contained " << cloud->size () << " points after removing NaN RGB points\n";
 }
 
 
@@ -135,7 +136,7 @@ void ColorICP::downSampleVoxelGrids (const PointCloudPtr& cloud) {
   sor.setLeafSize (resolution, resolution, resolution);
   sor.setInputCloud (cloud);
   sor.filter (*cloud);
-  std::cout << "Downsampled to " << cloud->size () << " points\n";
+  std::cout << "=> Downsampled to " << cloud->size () << " points\n";
 }
 
 
@@ -145,10 +146,10 @@ void ColorICP::estimateNormals (const PointCloudPtr& cloud) {
   ne.setRadiusSearch (params_["normal_est_radius"].As<double> ());
   ne.setInputCloud (cloud);
   ne.compute (*cloud);
-  std::cout << "Computed " << cloud->size () << " Normals\n";
+  std::cout << "=> Computed " << cloud->size () << " Normals\n";
   std::vector<int> nan_idx;
   pcl::removeNaNNormalsFromPointCloud (*cloud, *cloud, nan_idx);
-  std::cout << "Contained " << cloud->size () << " points after removing NaN normals\n";
+  std::cout << "=> Contained " << cloud->size () << " points after removing NaN normals\n";
 }
 
 
@@ -267,8 +268,8 @@ Eigen::Matrix4d ColorICP::ClassicICPRegistration (const PointCloudPtr& source, c
     // solve using Umeyama's algorithm (SVD)
     Eigen::Matrix4d transformation = Eigen::umeyama<Eigen::Matrix3Xd, Eigen::Matrix3Xd> (cloud_src, cloud_tgt, false);
     final_transformation = transformation * final_transformation;
-    std::cout << "it = " << t << "; cloud size = " << cloud_size << "; idx = " << idx << std::endl;
-    std::cout << "current transformation estimation" << std::endl << final_transformation << std::endl;
+    std::cout << "=> Iteration = " << t << "; Cloud size = " << cloud_size << "; idx = " << idx << std::endl;
+    std::cout << "=> current transformation estimation" << std::endl << final_transformation << std::endl;
 
     // check convergence
     double cos_angle = 0.5 * (transformation.coeff (0, 0) + transformation.coeff (1, 1) + transformation.coeff (2, 2) - 1);
@@ -276,7 +277,7 @@ Eigen::Matrix4d ColorICP::ClassicICPRegistration (const PointCloudPtr& source, c
                              transformation.coeff (1, 3) * transformation.coeff (1, 3) +
                              transformation.coeff (2, 3) * transformation.coeff (2, 3);
     if (cos_angle >= rotation_epsilon && translation_sqr <= translation_epsilon) {
-      std::cout << "converged!" << std::endl;
+      std::cout << "=> converged!" << std::endl;
       break;
     }
   }
@@ -321,7 +322,7 @@ Eigen::Matrix4d ColorICP::ColorICPRegistration (const PointCloudPtr& source, con
       indices_tgt.push_back(indices[0]);
     }
     int corres_size = static_cast<int> (indices_src.size());
-    std::cout << "it = " << t << "; cloud size = " << cloud_size << "; selected size = " << corres_size << std::endl;
+    std::cout << "=> Iteration = " << t << "; Cloud size = " << cloud_size << "; Selected size = " << corres_size << std::endl;
 
     // copy selected correspondences to new point clouds
     pcl::PointCloud<PointT>::Ptr cloud_src (new pcl::PointCloud<PointT>);
@@ -338,8 +339,8 @@ Eigen::Matrix4d ColorICP::ColorICPRegistration (const PointCloudPtr& source, con
     // solve using Gauss-Newton method
     Eigen::Matrix4d transformation = GaussNewtonWithColor (cloud_src, cloud_tgt, gradient_tgt);
     final_transformation = transformation * final_transformation;
-    std::cout << "transformation in this iteration" << std::endl << transformation << std::endl;
-    std::cout << "current transformation estimation" << std::endl << final_transformation << std::endl;
+    // std::cout << "transformation in this iteration" << std::endl << transformation << std::endl;
+    // std::cout << "current transformation estimation" << std::endl << final_transformation << std::endl;
 
     // check convergence
     double cos_angle = 0.5 * (transformation.coeff (0, 0) + transformation.coeff (1, 1) + transformation.coeff (2, 2) - 1);
@@ -347,7 +348,7 @@ Eigen::Matrix4d ColorICP::ColorICPRegistration (const PointCloudPtr& source, con
                              transformation.coeff (1, 3) * transformation.coeff (1, 3) +
                              transformation.coeff (2, 3) * transformation.coeff (2, 3);
     if (cos_angle >= rotation_epsilon && translation_sqr <= translation_epsilon) {
-      std::cout << "converged!" << std::endl;
+      std::cout << "=> converged!" << std::endl;
       break;
     }
   }
@@ -405,7 +406,7 @@ void ColorICP::prepareColorGradient (const PointCloudPtr& target) {
     Eigen::Vector3d X = (A * A.transpose()).ldlt().solve(A * b);
     target_color_gradient_[i] = X;  // X is the estimated color gradient dp
   }
-  std::cout << "Completed color gradient estimation for target cloud\n";
+  std::cout << "==> Completed color gradient estimation for target cloud\n";
 }
 
 
@@ -452,9 +453,9 @@ Eigen::Matrix4d ColorICP::GaussNewtonWithColor (const PointCloudPtr& source, con
   Eigen::Matrix6d JTJ = sqrt(lambda) * JTJ_G + sqrt(1-lambda) * JTJ_C;
   Eigen::Vector6d JTr = sqrt(lambda) * JTr_G + sqrt(1-lambda) * JTr_C;
   Eigen::Vector6d X = JTJ.ldlt().solve(-JTr);
-  std::cout << "JTJ = \n" <<  JTJ << std::endl;
-  std::cout << "JTr = \n" <<  JTr << std::endl;
-  std::cout << "X = \n" <<  X << std::endl;
+  // std::cout << "JTJ = \n" <<  JTJ << std::endl;
+  // std::cout << "JTr = \n" <<  JTr << std::endl;
+  // std::cout << "X = \n" <<  X << std::endl;
   return TransformVector6dToMatrix4d(X);
 }
 

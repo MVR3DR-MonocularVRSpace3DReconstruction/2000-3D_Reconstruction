@@ -24,14 +24,15 @@ def icp_registration(source, target, max_corres_dist):
 
 
 def colored_icp_registration(source, target, voxel_size):
-    print("=> Colored ICP registration")
+    # print("=> Colored ICP registration")
+    o3d.utility.set_verbosity_level(o3d.utility.VerbosityLevel.Warning)
     voxel_radius = [5*voxel_size, 3*voxel_size, voxel_size]
     max_iter = [60, 35, 20]# [60, 35, 20]
     T = np.identity(4)
     for scale in range(3):
         max_it = max_iter[scale]
         radius = voxel_radius[scale]
-        print("scale_level = {0}, voxel_size = {1}, max_iter = {2}".format(scale, radius, max_it))
+        # print("scale_level = {0}, voxel_size = {1}, max_iter = {2}".format(scale, radius, max_it))
         source_down = source.voxel_down_sample(radius)
         target_down = target.voxel_down_sample(radius)
         source_down.estimate_normals(o3d.geometry.KDTreeSearchParamHybrid(radius=radius*2, max_nn=20))
@@ -50,41 +51,28 @@ def colored_icp_registration(source, target, voxel_size):
             print("Error: \n",e)
             continue
         T = result.transformation
-        print("result:\n\t",result)
-    print("T:\n",T)
-    # draw_registration_result(source, target, T, color=True)
     return T
 
 def colored_icp(target, source, voxel_size = 0.05):
-    print("\n==> Start colored icp")
+    # print("\n==> Start colored icp")
     # unset env variable to re-enable OpenGL 3.3 in VM environments
     if 'SVGA_VGPU10' in os.environ:
         del os.environ['SVGA_VGPU10']
-
     # parameters
     # voxel_size = 0.01
     max_corres_dist = 5*voxel_size
     T = np.identity(4)
-
-    print("-> Loaded " + str(len(target.points)) + " points for target point cloud")
-    print("-> Loaded " + str(len(source.points)) + " points for source point cloud")
-    
+    # print("-> Loaded " + str(len(target.points)) + " points for target point cloud")
+    # print("-> Loaded " + str(len(source.points)) + " points for source point cloud")
     # estimate normals
     target.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=2*voxel_size, max_nn=16))
     source.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=2*voxel_size, max_nn=16))
-    print("=> Estimated normals for target and source point clouds")
-
+    # print("=> Estimated normals for target and source point clouds")
     # show initial alignment
-    print("=> Initial alignment")
+    # print("=> Initial alignment")
     print(o3d.pipelines.registration.evaluate_registration(target, source, max_corres_dist))
-    # draw_registration_result(target, source, transformation, color=False)
-
-    # ICP
-    # icp_registration(target, source, max_corres_dist)
-
     # colored ICP
     T = colored_icp_registration(target, source, voxel_size)
-
     return T
 
 

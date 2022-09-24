@@ -1,7 +1,9 @@
 import os
 import re
+import glob
 import random
 import numpy as np
+from tqdm import tqdm
 from time import time
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
@@ -31,6 +33,23 @@ def read_trajectory(filename):
             traj.append(CameraPose(metadata, mat))
             metastr = f.readline()
     return traj
+
+def read_point_clouds(data_dir = "./data/redwood-livingroom/",down_sample=0.1):
+    pcds = []
+    for pcd in tqdm(sorted(glob.glob(data_dir+'fragments/*.ply'))):
+        temp_pcd = o3d.io.read_point_cloud(pcd)
+        temp_pcd = temp_pcd.random_down_sample(down_sample)
+        temp_pcd.estimate_normals()
+        temp_pcd.transform([[1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1]])
+        pcds.append(temp_pcd)
+    return pcds
+
+def read_pose_graph(data_dir = "./data/redwood-livingroom/"):
+    graphs = []
+    for graph in tqdm(sorted(glob.glob(data_dir+'fragments/fragment_posegraph_opti_*.json'))):
+        temp = o3d.io.read_pose_graph(graph)
+        graphs.append(temp)
+    return graphs
 
 def show_rgbd(rgbd):
     plt.subplot(1, 2, 1)

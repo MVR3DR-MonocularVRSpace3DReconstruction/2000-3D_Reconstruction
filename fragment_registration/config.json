@@ -1,9 +1,7 @@
 {
     "name": "Open3D fragment reconstruction",
 
-    "n_files_per_step": 10,
-
-    "path_dataset": "../data/redwood-livingroom/",
+    "path_dataset": "../data/redwood-bedroom/",
     "folder_fragment": "fragments/",
     "folder_scene": "scene/",
 
@@ -13,9 +11,11 @@
     
     "template_global_posegraph": "scene/template_global_posegraph.json",
     "path_intrinsic": "",
+
+    "n_files_per_step": 10,
     "n_frames_per_fragment": 100,
 
-    "template_global_traj": "scene/template_global_traj.log",
+    "template_global_traj": "scene/global_traj.log",
 
     "template_refined_posegraph_optimized": "scene/template_refined_posegraph_optimized.json",
     "template_global_mesh": "scene/output_pcd.ply",

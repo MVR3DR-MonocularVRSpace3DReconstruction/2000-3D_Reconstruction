@@ -11,6 +11,9 @@ from initialize_config import initialize_config, dataset_loader
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Reconstruction system")
+    parser.add_argument("--debug_mode",
+                        help="turn on debug mode.",
+                        action="store_true")
     parser.add_argument("--config",
                         help="path to the config file",
                         default="./config.json")
@@ -26,6 +29,10 @@ if __name__ == "__main__":
         # load deafult dataset.
         config = dataset_loader(args.default_dataset)
 
+    if args.debug_mode:
+        config['debug_mode'] = True
+    else:
+        config['debug_mode'] = False
     times = [0, 0, 0, 0]
 
     start_time = time.time()

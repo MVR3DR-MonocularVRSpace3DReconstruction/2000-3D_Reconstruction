@@ -1,9 +1,10 @@
 {
     "name": "Open3D fragment reconstruction",
 
-    "path_dataset": "../data/redwood-bedroom/",
+    "path_dataset": "",
     "folder_fragment": "fragments/",
     "folder_scene": "scene/",
+    "outputs_dir": "outputs/",
 
     "template_fragment_pointcloud": "fragments/fragment_pcd_%03d.ply",
     "template_fragment_posegraph": "fragments/fragment_posegraph_%03d.json",
@@ -13,8 +14,9 @@
     "path_intrinsic": "",
 
     "n_files_per_step": 10,
-    "n_frames_per_fragment": 100,
+    "n_frames_per_fragment": 400,
 
+    "down_sample": 1,
     "template_global_traj": "scene/global_traj.log",
 
     "template_refined_posegraph_optimized": "scene/template_refined_posegraph_optimized.json",

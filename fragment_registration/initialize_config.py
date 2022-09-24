@@ -33,8 +33,6 @@ import sys
 import json
 from os.path import isfile, join, splitext, dirname, basename
 from warnings import warn
-from data_loader import lounge_data_loader, bedroom_data_loader, jackjack_data_loader
-
 
 def extract_rgbd_frames(rgbd_video_file):
     """
@@ -120,32 +118,3 @@ def initialize_config(config):
     set_default_value(config, "template_global_mesh", "scene/integrated.ply")
     set_default_value(config, "template_global_traj", "scene/trajectory.log")
 
-    if config["path_dataset"].endswith(".bag"):
-        assert os.path.isfile(config["path_dataset"]), (
-            f"File {config['path_dataset']} not found.")
-        print("Extracting frames from RGBD video file")
-        config["path_dataset"], config["path_intrinsic"], config[
-            "depth_scale"] = extract_rgbd_frames(config["path_dataset"])
-
-
-def dataset_loader(dataset_name):
-    print('Config file was not passed. Using deafult dataset.')
-    # Load the dataset and config.
-    config = {}
-    if dataset_name == 'lounge':
-        config = lounge_data_loader()
-    elif dataset_name == 'bedroom':
-        config = bedroom_data_loader()
-    elif dataset_name == 'jack_jack':
-        config = jackjack_data_loader()
-    else:
-        print(
-            "The requested dataset is not available. Available dataset options include lounge and jack_jack."
-        )
-        sys.exit(1)
-
-    # Set the default values for non-specified parameters.
-    initialize_config(config)
-
-    print('Loaded data from {}'.format(config['path_dataset']))
-    return config

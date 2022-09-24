@@ -34,7 +34,7 @@ import open3d as o3d
 pyexample_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(pyexample_path)
 
-from open3d_example import *
+from fragment_registration.open3d_utils import *
 
 
 def scalable_integrate_rgb_frames(path_dataset, intrinsic, config):

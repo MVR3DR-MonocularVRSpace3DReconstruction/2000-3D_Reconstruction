@@ -16,13 +16,13 @@ import copy
 import MinkowskiEngine as ME
 
 sys.path.append('.')
-from model import load_model
+from deep_global_registration.model import load_model
 
-from core.registration import GlobalRegistration
-from core.knn import find_knn_gpu
+from deep_global_registration.core.registration import GlobalRegistration
+from deep_global_registration.core.knn import find_knn_gpu
 
-from util.timer import Timer
-from util.pointcloud import make_open3d_point_cloud
+from deep_global_registration.util.timer import Timer
+from deep_global_registration.util.pointcloud import make_open3d_point_cloud
 
 
 # Feature-based registrations in Open3D

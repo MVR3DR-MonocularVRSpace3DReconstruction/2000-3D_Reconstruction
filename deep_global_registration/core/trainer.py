@@ -19,15 +19,15 @@ import torch.optim as optim
 import torch.nn.functional as F
 from tensorboardX import SummaryWriter
 
-from model import load_model
-from core.knn import find_knn_batch
-from core.correspondence import find_correct_correspondence
-from core.loss import UnbalancedLoss, BalancedLoss
-from core.metrics import batch_rotation_error, batch_translation_error
-import core.registration as GlobalRegistration
+from deep_global_registration.model import load_model
+from deep_global_registration.core.knn import find_knn_batch
+from deep_global_registration.core.correspondence import find_correct_correspondence
+from deep_global_registration.core.loss import UnbalancedLoss, BalancedLoss
+from deep_global_registration.core.metrics import batch_rotation_error, batch_translation_error
+import deep_global_registration.core.registration as GlobalRegistration
 
-from util.timer import Timer, AverageMeter
-from util.file import ensure_dir
+from deep_global_registration.util.timer import Timer, AverageMeter
+from deep_global_registration.util.file import ensure_dir
 
 import MinkowskiEngine as ME
 

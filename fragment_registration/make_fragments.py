@@ -34,15 +34,15 @@ import open3d as o3d
 pyexample_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(pyexample_path)
 
-from open3d_example import *
+from fragment_registration.open3d_utils import *
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from optimize_posegraph import optimize_posegraph_for_fragment
+from fragment_registration.optimize_posegraph import optimize_posegraph_for_fragment
 
 # check opencv python package
 with_opencv = initialize_opencv()
 if with_opencv:
-    from opencv_pose_estimation import pose_estimation
+    from fragment_registration.opencv_pose_estimation import pose_estimation
 
 
 def register_one_rgbd_pair(s, t, color_files, depth_files, intrinsic,

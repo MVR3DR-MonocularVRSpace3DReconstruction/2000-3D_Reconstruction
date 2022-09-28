@@ -17,17 +17,12 @@ if __name__ == "__main__":
     parser.add_argument("--config",
                         help="path to the config file",
                         default="fragment_registration/config.json")
-    parser.add_argument("--path_dataset",
-                        default="data/redwood-boardroom/")
 
     args = parser.parse_args()
-
-    
 
     assert args.config != None
     with open(args.config) as json_file:
         config = json.load(json_file)
-        config['path_dataset'] = args.path_dataset
         initialize_config(config)
         check_folder_structure(config['path_dataset'])
 

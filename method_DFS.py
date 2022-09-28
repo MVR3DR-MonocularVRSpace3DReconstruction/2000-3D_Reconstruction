@@ -10,8 +10,8 @@ import open3d as o3d
 import matplotlib
 import matplotlib.pyplot as plt
 
-from core.deep_global_registration import DeepGlobalRegistration
-from config import get_config
+from deep_global_registration.core.deep_global_registration import DeepGlobalRegistration
+from deep_global_registration.config import get_config
 
 from utils import *
 from colored_icp import *
@@ -36,13 +36,13 @@ def pcd_fusion_dfs(_pcd_list, depth):
 	right_pcd.estimate_normals()
 
 	print('=> Registration..')
+	
 	# registration
-	if len(_pcd_list) < 4:
-		T = overlap_predator(left_pcd, right_pcd)
-	else:
-		T, _ = DGR.register(left_pcd, right_pcd)
+	T = overlap_predator(left_pcd, right_pcd)
 	left_pcd.transform(T)
-	T = colored_icp(left_pcd, right_pcd)
+	T, _ = DGR.register(left_pcd, right_pcd)
+	left_pcd.transform(T)
+	T = color_icp_cpp(left_pcd, right_pcd)
 	left_pcd.transform(T)
 
 	print('=> Merge pcds')
@@ -52,26 +52,24 @@ def pcd_fusion_dfs(_pcd_list, depth):
 	o3d.io.write_point_cloud("./outputs/dfs/{}.ply".format(timestamp), merged_pcd)
 	# o3d.visualization.draw_geometries([merged_pcd])
 
-	print("="*10*(10-depth))
+	print("="*50)
 	print("=> List length: {} Stack Depth: {} [Merged Complete]".format(len(_pcd_list), depth))
-	print("="*10*(10-depth))
+	print("="*50)
 	return merged_pcd
 
 if __name__ == '__main__':
 
 	start_time = time()
 	config = get_config()
-	config.weights = "./pth/ResUNetBN2C-feat32-3dmatch-v0.05.pth"
+	config.weights = "deep_global_registration/pth/ResUNetBN2C-feat32-3dmatch-v0.05.pth"
 	DGR = DeepGlobalRegistration(config)
 
 	pcds = read_point_clouds(data_dir = "./data/redwood-livingroom/",down_sample=1)
-
-
+	
 	pause_time = time()
-	o3d.visualization.draw_geometries(pcds)
+	# o3d.visualization.draw_geometries(pcds)
 	pause_time = time() - pause_time
-
-
+	merged_pcd = o3d.geometry.PointCloud()
 	main_pcd =  pcd_fusion_dfs(pcds, 0)
 
 

@@ -3,6 +3,7 @@ import os
 import copy
 import numpy as np
 import open3d as o3d
+from tqdm import tqdm
 
 
 def draw_registration_result(source, target, transformation, color=False):
@@ -33,11 +34,15 @@ def colored_icp_registration(source, target, voxel_size):
         max_it = max_iter[scale]
         radius = voxel_radius[scale]
         # print("scale_level = {0}, voxel_size = {1}, max_iter = {2}".format(scale, radius, max_it))
-        source_down = source.voxel_down_sample(radius)
-        target_down = target.voxel_down_sample(radius)
-        source_down.estimate_normals(o3d.geometry.KDTreeSearchParamHybrid(radius=radius*2, max_nn=20))
-        target_down.estimate_normals(o3d.geometry.KDTreeSearchParamHybrid(radius=radius*2, max_nn=20))
+        
+        # source_down.estimate_normals(o3d.geometry.KDTreeSearchParamHybrid(radius=radius*2, max_nn=20))
+        # target_down.estimate_normals(o3d.geometry.KDTreeSearchParamHybrid(radius=radius*2, max_nn=20))
         try:
+            source_down = source.voxel_down_sample(radius)
+            target_down = target.voxel_down_sample(radius)
+            source_down.estimate_normals()
+            target_down.estimate_normals()
+            
             result = o3d.pipelines.registration.registration_colored_icp(
                 source_down, 
                 target_down, 
@@ -70,7 +75,7 @@ def colored_icp(target, source, voxel_size = 0.05):
     # print("=> Estimated normals for target and source point clouds")
     # show initial alignment
     # print("=> Initial alignment")
-    print(o3d.pipelines.registration.evaluate_registration(target, source, max_corres_dist))
+    # print(o3d.pipelines.registration.evaluate_registration(target, source, max_corres_dist))
     # colored ICP
     T = colored_icp_registration(target, source, voxel_size)
     return T

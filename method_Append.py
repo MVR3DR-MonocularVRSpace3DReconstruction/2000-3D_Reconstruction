@@ -9,10 +9,10 @@ from deep_global_registration.core.deep_global_registration import DeepGlobalReg
 from deep_global_registration.config import get_config
 
 def deep_global_registration(source, target):
-    print("=> Apply Deep Global Reg ")
+    # print("=> Apply Deep Global Reg ")
     if 'DGR' not in globals():
         config = get_config()
-        config.weights = "./pth/ResUNetBN2C-feat32-3dmatch-v0.05.pth"
+        config.weights = "deep_global_registration/pth/ResUNetBN2C-feat32-3dmatch-v0.05.pth"
         global DGR
         DGR = DeepGlobalRegistration(config)
     _transformation_dgr, _ = DGR.register(source, target)
@@ -30,23 +30,26 @@ def run(config):
 		pcd_base = reged_pcds[-1]
 		pcd_trans = pcd
 		# registration
-		T = overlap_predator(pcd_trans, pcd_base) # pcd_base
+		T = deep_global_registration(pcd_trans, pcd_base) # pcd_base
 		pcd_trans.transform(T)
 		# color registration
 		# print('=> Color ICP Registration..')
-		T = colored_icp(pcd_trans, pcd_base) # pcd_base
+		T = overlap_predator(pcd_trans, pcd_base) # pcd_base
 		pcd_trans.transform(T)
 		# stored pcd
+		T = color_icp_cpp(pcd_trans, pcd_base) # pcd_base
+		pcd_trans.transform(T)
 		reged_pcds.append(pcd_trans)
-		# merged_pcd = merge_pcds(reged_pcds)
-		# o3d.visualization.draw_geometries([merged_pcd])
-		# o3d.io.write_point_cloud("./outputs/Appended.ply", merged_pcd)
+		
+		merged_pcd = merge_pcds(reged_pcds)
+		# o3d.visualization.draw_geometries(reged_pcds)
+		o3d.io.write_point_cloud("./outputs/Appended.ply", merged_pcd)
 	merged_pcd = merge_pcds(reged_pcds)
 	o3d.io.write_point_cloud(config['outputs_dir']+"Appended.ply", merged_pcd)
-	# o3d.visualization.draw_geometries(reged_pcds)
+	o3d.visualization.draw_geometries(reged_pcds)
 
 if __name__ == '__main__':
-	config = {'path_dataset':"data/redwood-boardroom/",
+	config = {'path_dataset':"outputs/",
 				'outputs_dir': "outputs/",
 				"down_sample": 1}
 	run(config)

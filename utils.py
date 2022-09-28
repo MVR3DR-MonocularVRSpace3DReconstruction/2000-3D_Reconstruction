@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 import open3d as o3d
 import open3d.core as o3c
+import copy
 
 class CameraPose:
 
@@ -34,6 +35,30 @@ def read_trajectory(filename):
             metastr = f.readline()
     return traj
 
+def load_point_clouds(data_dir = "data/redwood-livingroom/",
+                      camera_pose_file = "livingroom.log",
+                      step = 10,
+                      down_sample=1):
+    image_dir = sorted(glob.glob(data_dir+'image/*.jpg'))
+    depth_dir = sorted(glob.glob(data_dir+'depth/*.png'))
+    camera_poses = read_trajectory("{}{}".format(data_dir, camera_pose_file))
+
+    pcds = []
+    # print("=> Start loading point clouds...")
+    for i in tqdm(range(0, len(image_dir), step), desc="Load point clouds"):
+        # print("=> Load [{}/{}] point cloud".format(i//step,len(image_dir)//step))
+        pcd = generate_point_cloud(
+                image_dir[i],
+                depth_dir[i],
+                # camera_poses[i].pose
+                )
+        if down_sample != 1:
+            pcd = pcd.random_down_sample(voxel_size=down_sample)
+            pcd.estimate_normals()
+        pcds.append(pcd)
+    # print("# Load {} point clouds from {}".format(len(pcds),data_dir))
+    return pcds
+    
 def read_point_clouds(data_dir = "./data/redwood-livingroom/",down_sample=0.1):
     pcds = []
     for pcd in tqdm(sorted(glob.glob(data_dir+'fragments/*.ply'))):
@@ -50,6 +75,15 @@ def read_pose_graph(data_dir = "./data/redwood-livingroom/"):
         temp = o3d.io.read_pose_graph(graph)
         graphs.append(temp)
     return graphs
+
+def read_rgbd_image(color_file, depth_file, convert_rgb_to_intensity):
+    color = o3d.io.read_image(color_file)
+    depth = o3d.io.read_image(depth_file)
+    rgbd_image = o3d.geometry.RGBDImage.create_from_color_and_depth(
+        color,
+        depth,
+        convert_rgb_to_intensity=convert_rgb_to_intensity)
+    return rgbd_image
 
 def show_rgbd(rgbd):
     plt.subplot(1, 2, 1)
@@ -77,11 +111,11 @@ def generate_point_cloud_with_camera_pose(image_dir:str, depth_dir:str, camera_p
     color = o3d.io.read_image(image_dir)
     depth = o3d.io.read_image(depth_dir)
     # random noise
-
-    random.seed(time())
-    camera_pose[0][3] += random.randint(-5000,5000) / 10000
-    camera_pose[1][3] += random.randint(-5000,5000) / 10000
-    camera_pose[2][3] += random.randint(-5000,5000) / 10000
+    # random.seed(time())
+    # camera_pose[0][3] += random.randint(-5000,5000) / 100000
+    # camera_pose[1][3] += random.randint(-5000,5000) / 100000
+    # camera_pose[2][3] += random.randint(-5000,5000) / 100000
+    
     rgbd = o3d.geometry.RGBDImage.create_from_color_and_depth(color, depth,convert_rgb_to_intensity=False)
     pcd = o3d.geometry.PointCloud.create_from_rgbd_image(
         rgbd,
@@ -92,8 +126,8 @@ def generate_point_cloud_with_camera_pose(image_dir:str, depth_dir:str, camera_p
     return pcd
 
 def merge_pcds(pcd_list):
-    tmp_points = np.concatenate(tuple([i.points for i in pcd_list]), axis=0)
-    tmp_colors = np.concatenate(tuple([i.colors for i in pcd_list]), axis=0)
+    tmp_points = copy.deepcopy(np.concatenate(tuple([i.points for i in pcd_list]), axis=0))
+    tmp_colors = copy.deepcopy(np.concatenate(tuple([i.colors for i in pcd_list]), axis=0))
     tmp = o3d.geometry.PointCloud()
     tmp.points = o3d.utility.Vector3dVector(tmp_points)
     tmp.colors = o3d.utility.Vector3dVector(tmp_colors)
@@ -108,50 +142,6 @@ def get_max_distance(min0:float,max0:float,min1:float,max1:float):
     if ans == 2 : return min0, max1
     if ans == 3 : return min1, max1
     return False
-
-def get_max_box_corner(box_0,box_1):
-    min_x0 = np.argmin(box_0[:,0])
-    min_y0 = np.argmin(box_0[:,1])
-    min_z0 = np.argmin(box_0[:,2])
-    max_x0 = np.argmax(box_0[:,0])
-    max_y0 = np.argmax(box_0[:,1])
-    max_z0 = np.argmax(box_0[:,2])
-    min_x1 = np.argmin(box_1[:,0])
-    min_y1 = np.argmin(box_1[:,1])
-    min_z1 = np.argmin(box_1[:,2])
-    max_x1 = np.argmax(box_1[:,0])
-    max_y1 = np.argmax(box_1[:,1])
-    max_z1 = np.argmax(box_1[:,2])
-    x_min, x_max = get_max_distance(min_x0, max_x0, min_x1, max_x1)
-    y_min, y_max = get_max_distance(min_y0, max_y0, min_y1, max_y1)
-    z_min, z_max = get_max_distance(min_z0, max_z0, min_z1, max_z1)
-    return [[x_min, y_min, z_min],
-            [x_min, y_min, z_max],
-            [x_min, y_max, z_min],
-            [x_min, y_max, z_max],
-            [x_max, y_min, z_min],
-            [x_max, y_min, z_max],
-            [x_max, y_max, z_min],
-            [x_max, y_max, z_max],
-        ] 
-
-def get_max_box_center_extent(box_0,box_1):
-    min_x0 = min(box_0[:,0])
-    min_y0 = min(box_0[:,1])
-    min_z0 = min(box_0[:,2])
-    max_x0 = max(box_0[:,0])
-    max_y0 = max(box_0[:,1])
-    max_z0 = max(box_0[:,2])
-    min_x1 = min(box_1[:,0])
-    min_y1 = min(box_1[:,1])
-    min_z1 = min(box_1[:,2])
-    max_x1 = max(box_1[:,0])
-    max_y1 = max(box_1[:,1])
-    max_z1 = max(box_1[:,2])
-    x_min, x_max = get_max_distance(min_x0, max_x0, min_x1, max_x1)
-    y_min, y_max = get_max_distance(min_y0, max_y0, min_y1, max_y1)
-    z_min, z_max = get_max_distance(min_z0, max_z0, min_z1, max_z1)
-    return np.array([(x_max + x_min)/2, (y_max + y_min)/2, (z_max + z_min)/2]),np.array([(x_max - x_min)/2, (y_max - y_min)/2, (z_max - z_min)/2])
 
 def ply_double_to_float(path:str):
     try:

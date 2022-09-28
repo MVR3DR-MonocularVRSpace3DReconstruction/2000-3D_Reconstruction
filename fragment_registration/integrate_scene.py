@@ -30,6 +30,7 @@ import numpy as np
 import math
 import os, sys
 import open3d as o3d
+from tqdm import tqdm
 
 pyexample_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(pyexample_path)
@@ -54,12 +55,12 @@ def scalable_integrate_rgb_frames(path_dataset, intrinsic, config):
     pose_graph_fragment = o3d.io.read_pose_graph(
         join(path_dataset, config["template_refined_posegraph_optimized"]))
 
-    for fragment_id in range(len(pose_graph_fragment.nodes)):
+    for fragment_id in tqdm(range(len(pose_graph_fragment.nodes))):
         pose_graph_rgbd = o3d.io.read_pose_graph(
             join(path_dataset,
                  config["template_fragment_posegraph_optimized"] % fragment_id))
 
-        for frame_id in range(0, len(pose_graph_rgbd.nodes), config["n_files_per_step"]):
+        for frame_id in tqdm(range(0, len(pose_graph_rgbd.nodes))):
             frame_id_abs = fragment_id * \
                     config['n_frames_per_fragment'] + frame_id
             print(

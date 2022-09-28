@@ -24,7 +24,29 @@ from deep_global_registration.core.knn import find_knn_gpu
 from deep_global_registration.util.timer import Timer
 from deep_global_registration.util.pointcloud import make_open3d_point_cloud
 
+from overlap_predator.overlap import overlap_predator
 
+def icp_point2plane_registration(source, target, voxel_size):
+    source.estimate_normals()
+    target.estimate_normals()
+    # print("=> Apply point-to-plane ICP")
+    voxel_radius = [15*voxel_size, 3*voxel_size, 1.5*voxel_size]
+    max_iter = [60, 35, 20]# [60, 35, 20]
+    _transformation_icp = np.identity(4)
+    for scale in range(3):
+        max_it = max_iter[scale]
+        radius = voxel_radius[scale]
+        # print("=> scale_level = {0}, voxel_size = {1}, max_iter = {2}".format(scale, radius, max_it))
+        # print("=> scale_level = {0}, voxel_size = {1}".format(scale, radius))
+        result = o3d.pipelines.registration.registration_icp(
+            source, target, radius, _transformation_icp,
+            o3d.pipelines.registration.TransformationEstimationPointToPlane(),
+            o3d.pipelines.registration.ICPConvergenceCriteria(relative_fitness=1e-6,
+                                                                    relative_rmse=1e-6,
+                                                                    max_iteration=max_it)
+                                                                    )
+        _transformation_icp = result.transformation
+    return _transformation_icp
 # Feature-based registrations in Open3D
 def registration_ransac_based_on_feature_matching(pcd0, pcd1, feats0, feats1,
                                                   distance_threshold, num_iterations):
@@ -75,10 +97,10 @@ class DeepGlobalRegistration:
     self.device = device
 
     # Safeguard
-    self.safeguard_method = 'correspondence'  # correspondence, feature_matching
+    self.safeguard_method = 'correspondence'  # correspondence, fcgf_feature_matching, point2plane
 
     # Final tuning
-    self.use_icp = True
+    self.use_icp = False
 
     # Misc
     self.feat_timer = Timer()
@@ -230,11 +252,13 @@ class DeepGlobalRegistration:
                                                       distance_threshold,
                                                       num_iterations=num_iterations)
     elif self.safeguard_method == 'fcgf_feature_matching':
-      T = registration_ransac_based_on_fcgf_feature_matching(pcd0, pcd1,
+      T = registration_ransac_based_on_feature_matching(pcd0, pcd1,
                                                              feats0.cpu().numpy(),
                                                              feats1.cpu().numpy(),
                                                              distance_threshold,
                                                              num_iterations)
+    elif self.safeguard_method == "point2plane":
+      T = icp_point2plane_registration(pcd0, pcd1, 0.05)
     else:
       raise ValueError('Undefined')
     return T
@@ -279,7 +303,7 @@ class DeepGlobalRegistration:
     # > Case 0: Weighted Procrustes + Robust Refinement
     wsum_threshold = max(200, len(weights) * 0.05)
     sign = '>=' if wsum >= wsum_threshold else '<'
-    print(f'=> Weighted sum {wsum:.2f} {sign} threshold {wsum_threshold}')
+    # print(f'=> Weighted sum {wsum:.2f} {sign} threshold {wsum_threshold}')
 
     T = np.identity(4)
 
@@ -299,7 +323,7 @@ class DeepGlobalRegistration:
         T[0:3, 0:3] = rot.detach().cpu().numpy()
         T[0:3, 3] = trans.detach().cpu().numpy()
         dgr_time = self.reg_timer.toc()
-        print(f'=> DGR takes {dgr_time:.2} s')
+        # print(f'=> DGR takes {dgr_time:.2} s')
         isGoodReg = True
 
       except RuntimeError:
@@ -311,7 +335,6 @@ class DeepGlobalRegistration:
 
     else:
       # > Case 1: Safeguard RANSAC + (Optional) ICP
-      # print("#  wsum < wsum_threshold")
       pcd0 = make_open3d_point_cloud(xyz0)
       pcd1 = make_open3d_point_cloud(xyz1)
       T = self.safeguard_registration(pcd0,
@@ -320,10 +343,10 @@ class DeepGlobalRegistration:
                                       corres_idx1,
                                       feats0,
                                       feats1,
-                                      15 * self.voxel_size, # 2 * vs
+                                      2 * self.voxel_size, # 2 * vs
                                       num_iterations=80000)
       safeguard_time = self.reg_timer.toc()
-      print(f'=> Safeguard takes {safeguard_time:.2} s')
+      # print(f'=> Safeguard takes {safeguard_time:.2} s')
 
       isGoodReg = False
 

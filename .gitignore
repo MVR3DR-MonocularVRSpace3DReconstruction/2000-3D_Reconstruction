@@ -1,5 +1,5 @@
 data/
 pth/
-outputs/
+outputs/*
 color_icp/build/
 color_icp/data/*.ply

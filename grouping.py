@@ -1,5 +1,4 @@
 # Base package
-from cProfile import label
 import os
 import numpy as np
 import glob
@@ -32,7 +31,7 @@ def make_fragments_groups(image_names, skip_steps = 100, extend_img_ratio = 5, t
     source = np.array(Image.open(image_names[sid]).convert('L'))
     for tid in tqdm(range(0, len(image_names), skip_steps)):
         target = np.array(Image.open(image_names[tid]).convert('L'))
-        score = msssim(source, target)
+        score = uqi(source, target)
         # print(score, sid, tid)
         if score < theroshold:
             groups.append([sid, tid])
@@ -58,16 +57,16 @@ def make_fragments_groups(image_names, skip_steps = 100, extend_img_ratio = 5, t
         if passShrink:
             groups.append(temp_groups[idx])
     groups = np.array(sorted(groups, key=lambda x:(x[0], x[1])))
-    # print(groups)
+    print(groups)
     print("Origin: {}, shrink to:{}".format(len(temp_groups), len(groups)))
     # store groups
     np.savetxt("outputs/posegraph/groups.txt",groups)
     return groups
 
-groups = np.loadtxt("outputs/posegraph/groups.txt")
-groups = [[int(group[0]), int(group[1])] for group in groups] 
-# steps = len(image_names) // 50
-# groups = make_fragments_groups(image_names, skip_steps=steps, extend_img_ratio=20, theroshold=0.65)
+# groups = np.loadtxt("outputs/posegraph/groups.txt")
+# groups = [[int(group[0]), int(group[1])] for group in groups] 
+steps = len(image_names) // 50
+groups = make_fragments_groups(image_names, skip_steps=10, extend_img_ratio=5, theroshold=0.85)
 ####################################################################
 # Point Clouds Fragments Process
 ####################################################################
@@ -249,10 +248,13 @@ def process_single_fragment(sid, eid, image_names, depth_names, intrinsic, voxel
     else:
         intrinsic = o3d.camera.PinholeCameraIntrinsic(
             o3d.camera.PinholeCameraIntrinsicParameters.PrimeSenseDefault)
+    print("=> Make posegraph")
     make_posegraph_for_fragment(sid, eid, 
                                 image_names, depth_names,
                                 intrinsic, with_opencv, voxel_size)
+    print("=> Optimize posegraph")
     optimize_posegraph_for_fragment(sid, eid, 0.07, 0.1)
+    print("=> Make pointcloud")
     make_pointcloud_for_fragment(sid, eid, 
                                 image_names, depth_names,
                                 intrinsic, False, 0.05)
@@ -262,15 +264,16 @@ def process_single_fragment(sid, eid, image_names, depth_names, intrinsic, voxel
 ####################################################################
 n_fragments = len(groups)
 
-# if True:
-#     from joblib import Parallel, delayed
-#     import multiprocessing
-#     import subprocess
-#     MAX_THREAD = min(multiprocessing.cpu_count()-1, n_fragments)
-#     Parallel(n_jobs=MAX_THREAD)(delayed(process_single_fragment)(sid, eid, image_names, depth_names, "", 0.05) for [sid, eid] in groups)
-# else:
-#     for [sid, eid] in groups:
-#         process_single_fragment(sid, eid, image_names, depth_names, "", 0.05)
+print("==> Make Fragments to point cloud")
+if True:
+    from joblib import Parallel, delayed
+    import multiprocessing
+    import subprocess
+    MAX_THREAD = min(multiprocessing.cpu_count(), n_fragments)
+    Parallel(n_jobs=MAX_THREAD)(delayed(process_single_fragment)(sid, eid, image_names, depth_names, "", 0.05) for [sid, eid] in groups)
+else:
+    for [sid, eid] in groups:
+        process_single_fragment(sid, eid, image_names, depth_names, "", 0.05)
 
 ####################################################################
 # Fragments Registration
@@ -419,7 +422,7 @@ for pcd_trans in tqdm(pcds):
     merged_pcd_down.estimate_normals()
     pcd_trans_down.estimate_normals()
 
-    T = overlap_predator(pcd_trans_down, merged_pcd_down)
+    T = deep_global_registration(pcd_trans_down, merged_pcd_down)
     pcd_trans.transform(T)
     merged_pcd = merge_pcds([merged_pcd, pcd_trans])
 o3d.visualization.draw_geometries([merged_pcd])

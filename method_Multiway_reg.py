@@ -160,7 +160,13 @@ def deep_global_registration(source, target):
         config.weights = "deep_global_registration/pth/ResUNetBN2C-feat32-3dmatch-v0.05.pth"
         global DGR
         DGR = DeepGlobalRegistration(config)
-    _transformation_dgr, isGoodReg = DGR.register(source, target)
+    source_down = copy.deepcopy(source)
+    target_down = copy.deepcopy(target)
+    source_down.voxel_down_sample(0.05)
+    target_down.voxel_down_sample(0.05)
+    source_down.estimate_normals()
+    target_down.estimate_normals()
+    _transformation_dgr, isGoodReg = DGR.register(source_down, target_down)
     return _transformation_dgr
 
 ###########################################################
@@ -168,10 +174,10 @@ def deep_global_registration(source, target):
 ###########################################################
 
 def combination_registration(source, target):
-    _transformation_overlap, _, certain = overlap_predator_registration(source, target)
+    _transformation_overlap, _, certain = deep_global_registration(source, target)
     pcd = merge_pcds([source])
     pcd = pcd.transform(_transformation_overlap)
-    transformation_cicp, _, _ = colored_icp_registration(pcd, target)
+    transformation_cicp = colored_icp_registration(pcd, target)
     transformation = np.dot(transformation_cicp, _transformation_overlap)
     # print(transformation_cicp,'\n', transformation_dgr,'\n', transformation)
     # source.paint_uniform_color([1, 0, 0]) # Red

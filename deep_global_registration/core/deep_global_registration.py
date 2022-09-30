@@ -100,7 +100,7 @@ class DeepGlobalRegistration:
     self.safeguard_method = 'correspondence'  # correspondence, fcgf_feature_matching, point2plane
 
     # Final tuning
-    self.use_icp = False
+    self.use_icp = True
 
     # Misc
     self.feat_timer = Timer()
@@ -303,7 +303,7 @@ class DeepGlobalRegistration:
     # > Case 0: Weighted Procrustes + Robust Refinement
     wsum_threshold = max(200, len(weights) * 0.05)
     sign = '>=' if wsum >= wsum_threshold else '<'
-    # print(f'=> Weighted sum {wsum:.2f} {sign} threshold {wsum_threshold}')
+    print(f'=> Weighted sum {wsum:.2f} {sign} threshold {wsum_threshold}')
 
     T = np.identity(4)
 
@@ -346,7 +346,7 @@ class DeepGlobalRegistration:
                                       2 * self.voxel_size, # 2 * vs
                                       num_iterations=80000)
       safeguard_time = self.reg_timer.toc()
-      # print(f'=> Safeguard takes {safeguard_time:.2} s')
+      print(f'=> Safeguard takes {safeguard_time:.2} s')
 
       isGoodReg = False
 

@@ -62,9 +62,9 @@ def registration_ransac_based_on_feature_matching(pcd0, pcd1, feats0, feats1,
 
   result = o3d.pipelines.registration.registration_ransac_based_on_feature_matching(
       pcd0, pcd1, source_feat, target_feat, distance_threshold,
-      o3d.pipelines.registration.TransformationEstimationPointToPoint(False), 4,
+      o3d.pipelines.registration.TransformationEstimationPointToPlane(), 3,
       [o3d.pipelines.registration.CorrespondenceCheckerBasedOnDistance(distance_threshold)],
-      o3d.pipelines.registration.RANSACConvergenceCriteria(num_iterations, 1000))
+      o3d.pipelines.registration.RANSACConvergenceCriteria(4000000, num_iterations))
 
   return result.transformation
 
@@ -97,7 +97,7 @@ class DeepGlobalRegistration:
     self.device = device
 
     # Safeguard
-    self.safeguard_method = 'correspondence'  # correspondence, fcgf_feature_matching, point2plane
+    self.safeguard_method = 'fcgf_feature_matching'  # correspondence, fcgf_feature_matching, point2plane
 
     # Final tuning
     self.use_icp = True
@@ -308,7 +308,7 @@ class DeepGlobalRegistration:
     T = np.identity(4)
 
 
-    isGoodReg = True
+    useSafeGuard = False
 
     if wsum >= wsum_threshold:
       # print("#  wsum >= wsum_threshold")
@@ -324,7 +324,7 @@ class DeepGlobalRegistration:
         T[0:3, 3] = trans.detach().cpu().numpy()
         dgr_time = self.reg_timer.toc()
         # print(f'=> DGR takes {dgr_time:.2} s')
-        isGoodReg = True
+        useSafeGuard = False
 
       except RuntimeError:
         # Will directly go to Safeguard
@@ -343,12 +343,12 @@ class DeepGlobalRegistration:
                                       corres_idx1,
                                       feats0,
                                       feats1,
-                                      2 * self.voxel_size, # 2 * vs
+                                      15 * self.voxel_size, # 2 * vs
                                       num_iterations=80000)
       safeguard_time = self.reg_timer.toc()
       print(f'=> Safeguard takes {safeguard_time:.2} s')
 
-      isGoodReg = False
+      useSafeGuard = True
 
     if self.use_icp:
       T = o3d.pipelines.registration.registration_icp(
@@ -356,4 +356,4 @@ class DeepGlobalRegistration:
           make_open3d_point_cloud(xyz1), self.voxel_size * 2, T,
           o3d.pipelines.registration.TransformationEstimationPointToPoint()).transformation
 
-    return T, isGoodReg
+    return T, useSafeGuard

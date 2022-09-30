@@ -89,16 +89,7 @@ def execute_global_registration(source_down, target_down):
             o3d.pipelines.registration.CorrespondenceCheckerBasedOnEdgeLength(0.9),
             o3d.pipelines.registration.CorrespondenceCheckerBasedOnDistance(distance_threshold)
         ], o3d.pipelines.registration.RANSACConvergenceCriteria(100000, 0.999))
-    return result
-
-def global_registration(source, target):
-    # print("=> Apply Global RANSAC ")
-    ransac_result = execute_global_registration(source, target)
-    _transformation_ransac = ransac_result.transformation
-    _information_ransac = o3d.pipelines.registration.get_information_matrix_from_point_clouds(
-        source, target, correspondence_distance,
-        ransac_result.transformation)
-    return _transformation_ransac, _information_ransac, True
+    return result.transformation
 
 ###########################################################
 # Color ICP Registration
@@ -133,20 +124,6 @@ def colored_icp_registration(source, target):
     return _transformation_cicp
 
 ###########################################################
-# Color ICP Registration
-###########################################################
-
-# 0-len()//20 time cost: 1m13s
-
-def color_icp_registration_by_cpp(source, target):
-    # print("=> Color ICP registration by CPP")
-    _transformation_cicp_cpp = color_icp_cpp(source, target)
-    _information_cicp_cpp = o3d.pipelines.registration.get_information_matrix_from_point_clouds(
-        source, target, correspondence_distance,
-        _transformation_cicp_cpp)
-    return _transformation_cicp_cpp, _information_cicp_cpp, True
-
-###########################################################
 # Deep Global Registration
 ###########################################################
 
@@ -174,7 +151,7 @@ def deep_global_registration(source, target):
 ###########################################################
 
 def combination_registration(source, target):
-    _transformation_overlap, _, certain = deep_global_registration(source, target)
+    _transformation_overlap = deep_global_registration(source, target)
     pcd = merge_pcds([source])
     pcd = pcd.transform(_transformation_overlap)
     transformation_cicp = colored_icp_registration(pcd, target)
@@ -201,7 +178,7 @@ def full_registration(pcds, correspondence_range_ratio):
             #     source_id, target_id, n_pcds-1, min(n_pcds, int(source_id + n_pcds * correspondence_range_ratio)), int(n_pcds * correspondence_range_ratio)))
             # first reg
             # o3d.visualization.draw_geometries([pcds[source_id], pcds[target_id]])
-            transformation = deep_global_registration(
+            transformation = combination_registration(
                 pcds[source_id], pcds[target_id])
 
             information= o3d.pipelines.registration.get_information_matrix_from_point_clouds(
@@ -252,7 +229,7 @@ pause_time = time() - pause_time
 print("\n\n# Full registration ...")
 correspondence_distance = voxel_size * 1.5 # 1.5
 # with o3d.utility.VerbosityContextManager(o3d.utility.VerbosityLevel.Debug) as cm:
-pose_graph = full_registration(pcds_down, 0.3) # 15/len(pcds_down)                     
+pose_graph = full_registration(pcds_down, 0.1) # 15/len(pcds_down)                     
 ########
 
 print("\n\n# Optimizing PoseGraph ...")

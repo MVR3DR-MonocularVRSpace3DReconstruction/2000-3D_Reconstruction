@@ -61,7 +61,7 @@ def registration_ransac_based_on_feature_matching(pcd0, pcd1, feats0, feats1,
   target_feat.data = feats1.astype('d').transpose()
 
   result = o3d.pipelines.registration.registration_ransac_based_on_feature_matching(
-      pcd0, pcd1, source_feat, target_feat, distance_threshold,
+      pcd0, pcd1, source_feat, target_feat, True, distance_threshold,
       o3d.pipelines.registration.TransformationEstimationPointToPlane(), 3,
       [o3d.pipelines.registration.CorrespondenceCheckerBasedOnDistance(distance_threshold)],
       o3d.pipelines.registration.RANSACConvergenceCriteria(4000000, num_iterations))

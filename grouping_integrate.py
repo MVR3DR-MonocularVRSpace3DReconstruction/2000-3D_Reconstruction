@@ -1,5 +1,6 @@
 # Base package
 import os
+from turtle import width
 import numpy as np
 import glob
 from tqdm import tqdm
@@ -9,14 +10,16 @@ from PIL import Image
 from sewar.full_ref import uqi, ssim, msssim
 import matplotlib.pyplot as plt
 
+import cv2
+
 ####################################################################
 # Image Grouping
 ####################################################################
 # data_dir = "data/redwood-livingroom/"
-data_dir = "data/redwood-livingroom/"
+data_dir = "data/redwood-bedroom/"
 image_names = sorted(glob.glob(data_dir+'image/*.jpg'))
 depth_names = sorted(glob.glob(data_dir+'depth/*.png'))
-print("=> Load Images.. ")
+print("==> Evaluate Images.. ")
 
 def make_fragments_groups(image_names, skip_steps = 100, extend_img_ratio = 5, theroshold = 0.85):
     # fresh documents
@@ -26,6 +29,7 @@ def make_fragments_groups(image_names, skip_steps = 100, extend_img_ratio = 5, t
     os.system("mkdir outputs/posegraph/")
 
     # evaluate images & grouping
+    print("=> Cluster images")
     groups=[]
     sid = 0
     source = np.array(Image.open(image_names[sid]).convert('L'))
@@ -39,22 +43,31 @@ def make_fragments_groups(image_names, skip_steps = 100, extend_img_ratio = 5, t
             source = np.array(Image.open(image_names[sid]).convert('L'))
     if groups[-1][1] != len(image_names)-1:
         groups.append([sid, len(image_names)-1])
+            
+            
+            
+    # if groups[-1][1] != len(image_names)-1:
+    #     groups.append([sid, len(image_names)-1])
 
     # extend groups with overlap frames
     print("=> Align groups.. ")
     temp_groups=[]
-    for [sid, tid] in groups:
+    for [sid, tid] in tqdm(groups):
         length = tid - sid + 1
         sid = max(0, sid-length//extend_img_ratio)
         tid = min(len(image_names)-1, tid+length//extend_img_ratio)
         temp_groups.append([sid, tid+1])  # fix range in [sid, tid)
+        
+        
     # remove useless groups which were full-covered by other groups
+    print("=> Remove useless groups")
     groups=[]
-    for idx in range(len(temp_groups)):
+    for idx in tqdm(range(len(temp_groups))):
         passShrink = True
         for iidx in range(idx+1, len(temp_groups)):
             if temp_groups[idx][0] > temp_groups[iidx][0] and temp_groups[idx][1] < temp_groups[iidx][1]:
                 passShrink = False
+                break
         if passShrink:
             groups.append(temp_groups[idx])
     groups = np.array(sorted(groups, key=lambda x:(x[0], x[1])))
@@ -62,12 +75,13 @@ def make_fragments_groups(image_names, skip_steps = 100, extend_img_ratio = 5, t
     print("Origin: {}, shrink to:{}".format(len(temp_groups), len(groups)))
     # store groups
     np.savetxt("outputs/posegraph/groups.txt",groups)
+    # input()
     return groups
 
-groups = np.loadtxt("outputs/posegraph/groups.txt")
-groups = [[int(group[0]), int(group[1])] for group in groups] 
-# steps = len(image_names) // 50
-# groups = make_fragments_groups(image_names, skip_steps=2, extend_img_ratio=5, theroshold=0.85)
+# groups = np.loadtxt("outputs/posegraph/groups.txt")
+# groups = [[int(group[0]), int(group[1])] for group in groups] 
+steps = len(image_names) // 50
+groups = make_fragments_groups(image_names, skip_steps=steps, extend_img_ratio=5, theroshold=1)
 ####################################################################
 # Point Clouds Fragments Process
 ####################################################################
@@ -258,23 +272,23 @@ def process_single_fragment(sid, eid, image_names, depth_names, intrinsic, voxel
     print("=> Make pointcloud")
     make_pointcloud_for_fragment(sid, eid, 
                                 image_names, depth_names,
-                                intrinsic, False, 0.05)
+                                intrinsic, True, 0.01)
 
 ####################################################################
 # Point Clouds Main Process
 ####################################################################
 n_fragments = len(groups)
 
-# print("==> Make Fragments to point cloud")
-# if True:
-#     from joblib import Parallel, delayed
-#     import multiprocessing
-#     import subprocess
-#     MAX_THREAD = min(multiprocessing.cpu_count(), n_fragments)
-#     Parallel(n_jobs=MAX_THREAD)(delayed(process_single_fragment)(sid, eid, image_names, depth_names, "", 0.05) for [sid, eid] in groups)
-# else:
-#     for [sid, eid] in groups:
-#         process_single_fragment(sid, eid, image_names, depth_names, "", 0.05)
+print("==> Make Fragments to point cloud")
+if True:
+    from joblib import Parallel, delayed
+    import multiprocessing
+    import subprocess
+    MAX_THREAD = min(multiprocessing.cpu_count(), n_fragments)
+    Parallel(n_jobs=MAX_THREAD)(delayed(process_single_fragment)(sid, eid, image_names, depth_names, "", 0.05) for [sid, eid] in groups)
+else:
+    for [sid, eid] in groups:
+        process_single_fragment(sid, eid, image_names, depth_names, "", 0.05)
 
 ####################################################################
 # Fragments Registration
@@ -381,72 +395,66 @@ def get_transformation_from_correspondence_fragment(sf_range, tf_range):
         sf_pos.append([rx, ry, rz ])
         _, _, _, rx, ry, rz = transformation2AnglePos(tf_trans)
         tf_pos.append([rx, ry, rz ])
-        # print(sf_trans,'\n',tf_trans)
-        T_cal = np.dot(np.linalg.inv(tf_trans), sf_trans)
-        # print(T_cal)
-        # print("%.5f %.5f %.5f %.5f %.5f %.5f " % transformation2AnglePos(T_cal))
-    T = rigid_transform_3D(np.array(tf_pos), np.array(sf_pos))
-    print(T)
+        # T_cal = np.dot(np.linalg.inv(tf_trans), sf_trans)
+    T_rigid = rigid_transform_3D(np.array(tf_pos), np.array(sf_pos))
     sf_trans = sf_pose.nodes[tf_range[0]-sf_range[0]].pose
     tf_trans = tf_pose.nodes[tf_range[0]-tf_range[0]].pose
     T_cal = np.dot(np.linalg.inv(tf_trans), sf_trans)
-    print(T_cal)
-    print("%.5f %.5f %.5f %.5f %.5f %.5f " % transformation2AnglePos(T))
+    print("%.5f %.5f %.5f %.5f %.5f %.5f " % transformation2AnglePos(T_rigid))
     print("%.5f %.5f %.5f %.5f %.5f %.5f " % transformation2AnglePos(T_cal))
-    # input()
     
+    # T = sf_trans
+    sf_pcd_name = "outputs/fragments/fragment_{:0>5}-{:0>5}.ply".format(*sf_range)
+    tf_pcd_name = "outputs/fragments/fragment_{:0>5}-{:0>5}.ply".format(*tf_range)
+
     
-    # # T = sf_trans
-    # sf_pcd_name = "outputs/fragments/fragment_{:0>5}-{:0>5}.ply".format(*sf_range)
-    # tf_pcd_name = "outputs/fragments/fragment_{:0>5}-{:0>5}.ply".format(*tf_range)
-
-    # sf_pcd = o3d.io.read_point_cloud(sf_pcd_name)
-    # tf_pcd = o3d.io.read_point_cloud(tf_pcd_name)
-    # tf_pcd.transform(T_cal)
-    # # o3d.visualization.draw_geometries([sf_pcd, tf_pcd])
+    sf_pcd = o3d.io.read_point_cloud(sf_pcd_name)
+    tf_pcd = o3d.io.read_point_cloud(tf_pcd_name)
+    tf_pcd.transform(T_rigid)
+    # o3d.visualization.draw_geometries([sf_pcd, tf_pcd])
     
-    # print("=> global registration refine")
+    print("=> global registration refine")
 
 
-    # sf_pcd_down = copy.deepcopy(sf_pcd)
-    # tf_pcd_down = copy.deepcopy(tf_pcd)
-    # sf_pcd_down.voxel_down_sample(0.05)
-    # tf_pcd_down.voxel_down_sample(0.05)
-    # sf_pcd_down.estimate_normals()
-    # tf_pcd_down.estimate_normals()
+    sf_pcd_down = copy.deepcopy(sf_pcd)
+    tf_pcd_down = copy.deepcopy(tf_pcd)
+    sf_pcd_down.voxel_down_sample(0.05)
+    tf_pcd_down.voxel_down_sample(0.05)
+    sf_pcd_down.estimate_normals()
+    tf_pcd_down.estimate_normals()
 
-    # T_global_reg, useSageGuard = deep_global_registration(tf_pcd_down, sf_pcd_down, '3dmatch')
-    # if useSageGuard:
-    #     o3d.visualization.draw_geometries([sf_pcd, tf_pcd])
-    #     sf_pcd_kitti = copy.deepcopy(sf_pcd)
-    #     tf_pcd_kitti = copy.deepcopy(tf_pcd)
+    T_global_reg, useSageGuard = deep_global_registration(tf_pcd_down, sf_pcd_down, '3dmatch')
+    if useSageGuard:
+        o3d.visualization.draw_geometries([sf_pcd, tf_pcd])
+        sf_pcd_kitti = copy.deepcopy(sf_pcd)
+        tf_pcd_kitti = copy.deepcopy(tf_pcd)
         
-    #     # sf_pcd_kitti.voxel_down_sample(0.3)
-    #     # tf_pcd_kitti.voxel_down_sample(0.3)
-    #     sf_pcd_kitti.estimate_normals()
-    #     tf_pcd_kitti.estimate_normals()
+        # sf_pcd_kitti.voxel_down_sample(0.3)
+        # tf_pcd_kitti.voxel_down_sample(0.3)
+        sf_pcd_kitti.estimate_normals()
+        tf_pcd_kitti.estimate_normals()
 
-    #     T_global_reg = overlap_predator(tf_pcd_kitti, sf_pcd_kitti)
+        T_global_reg = overlap_predator(tf_pcd_kitti, sf_pcd_kitti)
     
-    # tf_pcd.transform(T_global_reg)
-    # tf_pcd_down.transform(T_global_reg)
-    # # o3d.visualization.draw_geometries([sf_pcd, tf_pcd])
+    tf_pcd.transform(T_global_reg)
+    tf_pcd_down.transform(T_global_reg)
+    # o3d.visualization.draw_geometries([sf_pcd, tf_pcd])
     
-    # print("=> color icp registration deep refine")
-    # sf_pcd_down = copy.deepcopy(sf_pcd)
-    # tf_pcd_down = copy.deepcopy(tf_pcd)
-    # sf_pcd_down.voxel_down_sample(0.05)
-    # tf_pcd_down.voxel_down_sample(0.05)
-    # sf_pcd_down.estimate_normals()
-    # tf_pcd_down.estimate_normals()
-    # T_color_reg = colored_icp_registration(tf_pcd_down, sf_pcd_down, 0.05)
-    # tf_pcd.transform(T_color_reg)
-    # tf_pcd_down.transform(T_color_reg)
+    print("=> color icp registration deep refine")
+    sf_pcd_down = copy.deepcopy(sf_pcd)
+    tf_pcd_down = copy.deepcopy(tf_pcd)
+    sf_pcd_down.voxel_down_sample(0.05)
+    tf_pcd_down.voxel_down_sample(0.05)
+    sf_pcd_down.estimate_normals()
+    tf_pcd_down.estimate_normals()
+    T_color_reg = colored_icp_registration(tf_pcd_down, sf_pcd_down, 0.05)
+    tf_pcd.transform(T_color_reg)
+    tf_pcd_down.transform(T_color_reg)
 
-    # T_trans = np.dot(T_cal, np.dot(T_global_reg, T_color_reg))
-    # # o3d.visualization.draw_geometries([sf_pcd, tf_pcd])
+    T_trans = np.dot(T_rigid, np.dot(T_global_reg, T_color_reg))
+    # o3d.visualization.draw_geometries([sf_pcd, tf_pcd])
     
-    return T
+    return T_trans
 
 
 ####################################################################
@@ -462,7 +470,7 @@ for graph in tqdm(pose_graph_files):
     temp = o3d.io.read_pose_graph(graph)
     graphs.append(temp)
 
-T = np.identity(4)
+T_global = np.identity(4)
 
 volume = o3d.pipelines.integration.ScalableTSDFVolume(
     voxel_length=3.0 / 512.0,
@@ -471,6 +479,12 @@ volume = o3d.pipelines.integration.ScalableTSDFVolume(
 intrinsic = o3d.camera.PinholeCameraIntrinsic(o3d.camera.PinholeCameraIntrinsicParameters.PrimeSenseDefault)
     
 pcds = []
+pcd = o3d.geometry.PointCloud()
+vis = o3d.visualization.VisualizerWithEditing()
+vis.add_geometry(pcd)
+vis.create_window()
+
+
 for fragment_idx in tqdm(range(0, n_fragments), desc="Load fragment"):
     
     # get transformation with next fragment
@@ -483,20 +497,28 @@ for fragment_idx in tqdm(range(0, n_fragments), desc="Load fragment"):
         target_fragment_range = groups[fragment_idx]
         T_trans = np.identity(4)
     print("T local:\n",T_trans)
-    print("T global:\n",T)
-    T = np.dot(T, T_trans)
+    print("T global:\n",T_global)
+    T_global = np.dot(T_global, T_trans)
     for idx in range(*groups[fragment_idx]):
         print("=> INTEGRATE Fragment [%05d-%05d] rgbd frame [%d/%d]" % (*groups[fragment_idx], idx-groups[fragment_idx][0], groups[fragment_idx][1] - groups[fragment_idx][0]))
         rgbd = read_rgbd_image(image_names[idx], depth_names[idx], False)
         pose = graphs[fragment_idx].nodes[idx-groups[fragment_idx][0]].pose
-        pose = np.dot(T,pose)
+        pose = np.dot(T_global,pose)
         volume.integrate(rgbd, intrinsic, np.linalg.inv(pose))
+
+    pcd = volume.extract_point_cloud()
+    pcd.transform([[1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1]])
+    vis.clear_geometries()
+    vis.add_geometry(pcd)
+    vis.poll_events()
+    vis.update_renderer()
     
-pcd = volume.extract_point_cloud()
-o3d.visualization.draw_geometries([pcd])
+vis.destroy_window()    
 # merged_pcd = merge_pcds(pcds)
 # o3d.io.write_point_cloud("outputs/fragments/MAIN.ply", merged_pcd, False, True)
 # o3d.visualization.draw_geometries([merged_pcd])
+o3d.visualization.draw_geometries([pcd], width=640, height=320)
+
 
 ####################################################################
 # Merged Fragments Global Registration

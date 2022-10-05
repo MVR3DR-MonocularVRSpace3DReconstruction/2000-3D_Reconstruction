@@ -1,6 +1,5 @@
 # Base package
 import os
-from turtle import width
 import numpy as np
 import glob
 from tqdm import tqdm
@@ -16,7 +15,7 @@ import cv2
 # Image Grouping
 ####################################################################
 # data_dir = "data/redwood-livingroom/"
-data_dir = "data/redwood-bedroom/"
+data_dir = "data/redwood-livingroom/"
 image_names = sorted(glob.glob(data_dir+'image/*.jpg'))
 depth_names = sorted(glob.glob(data_dir+'depth/*.png'))
 print("==> Evaluate Images.. ")
@@ -81,11 +80,12 @@ def make_fragments_groups(image_names, skip_steps = 100, extend_img_ratio = 5, t
 # groups = np.loadtxt("outputs/posegraph/groups.txt")
 # groups = [[int(group[0]), int(group[1])] for group in groups] 
 steps = len(image_names) // 50
-groups = make_fragments_groups(image_names, skip_steps=steps, extend_img_ratio=5, theroshold=1)
+groups = make_fragments_groups(image_names, skip_steps=steps, extend_img_ratio=5, theroshold=0.9)
 ####################################################################
 # Point Clouds Fragments Process
 ####################################################################
 
+import gc
 import open3d as o3d
 from utils import *
 from deep_global_registration.core.deep_global_registration import DeepGlobalRegistration
@@ -131,6 +131,32 @@ def optimize_posegraph_for_fragment(sid, eid, max_correspondence_distence, prefe
 ####################################################################
 # Make Fragments
 ####################################################################
+config = get_config()
+        # ResUNetBN2C-feat32-3dmatch-v0.05.pth   ResUNetBN2C-feat32-kitti-v0.3.pth
+config.weights = "deep_global_registration/pth/ResUNetBN2C-feat32-3dmatch-v0.05.pth"
+DGR_3dm = DeepGlobalRegistration(config)
+
+def deep_global_registration(source, target, model='3dmatch'):
+    print("# Apply Deep Global Reg ")
+    if model=='3dmatch' and 'DGR_3dm' not in globals():
+        config = get_config()
+        # ResUNetBN2C-feat32-3dmatch-v0.05.pth   ResUNetBN2C-feat32-kitti-v0.3.pth
+        config.weights = "deep_global_registration/pth/ResUNetBN2C-feat32-3dmatch-v0.05.pth"
+        global DGR_3dm
+        DGR_3dm = DeepGlobalRegistration(config)
+    if model=='kitti' and 'DGR_kitti' not in globals():
+        config = get_config()
+        # ResUNetBN2C-feat32-3dmatch-v0.05.pth   ResUNetBN2C-feat32-kitti-v0.3.pth
+        config.weights = "deep_global_registration/pth/ResUNetBN2C-feat32-kitti-v0.3.pth"
+        global DGR_kitti
+        DGR_kitti = DeepGlobalRegistration(config)
+    
+    if model == '3dmatch':
+        _transformation_dgr, useSafeGuard = DGR_3dm.register(source, target)
+    if model == 'kitti' :
+        _transformation_dgr, useSafeGuard = DGR_kitti.register(source, target)
+    return _transformation_dgr, useSafeGuard
+
 
 def register_one_rgbd_pair(s, t, color_files, depth_files, intrinsic, with_opencv):
     o3d.utility.set_verbosity_level(o3d.utility.VerbosityLevel.Error)
@@ -159,7 +185,8 @@ def register_one_rgbd_pair(s, t, color_files, depth_files, intrinsic, with_openc
             if success_5pt:
                 [success, trans, info] = o3d.pipelines.odometry.compute_rgbd_odometry(
                     source_rgbd_image, target_rgbd_image, intrinsic, odo_init,
-                    o3d.pipelines.odometry.RGBDOdometryJacobianFromHybridTerm(),
+                    # o3d.pipelines.odometry.RGBDOdometryJacobianFromHybridTerm(),
+                    o3d.pipelines.odometry.RGBDOdometryJacobianFromColorTerm(),
                     option)
                 return [success, trans, info]
         return [False, np.identity(4), np.identity(6)]
@@ -167,7 +194,9 @@ def register_one_rgbd_pair(s, t, color_files, depth_files, intrinsic, with_openc
         odo_init = np.identity(4)
         [success, trans, info] = o3d.pipelines.odometry.compute_rgbd_odometry(
             source_rgbd_image, target_rgbd_image, intrinsic, odo_init,
-            o3d.pipelines.odometry.RGBDOdometryJacobianFromHybridTerm(), option)
+            # o3d.pipelines.odometry.RGBDOdometryJacobianFromHybridTerm(), 
+            o3d.pipelines.odometry.RGBDOdometryJacobianFromColorTerm(),
+            option)
         return [success, trans, info]
 
 def make_posegraph_for_fragment(sid, eid, 
@@ -177,25 +206,47 @@ def make_posegraph_for_fragment(sid, eid,
     pose_graph = o3d.pipelines.registration.PoseGraph()
     trans_odometry = np.identity(4)
     pose_graph.nodes.append(o3d.pipelines.registration.PoseGraphNode(trans_odometry))
-    for s in range(sid, eid):
-        for t in range(s + 1, eid):
-            # odometry
-            if t == s + 1:
-                print("=> Matching Fragment [%05d-%05d] RGBD between frame [%d:%d]" % (sid, eid, s, t))
-                [success, trans, info] = register_one_rgbd_pair(s, t, color_files, depth_files, intrinsic, with_opencv)
-                trans_odometry = np.dot(trans, trans_odometry)
-                trans_odometry_inv = np.linalg.inv(trans_odometry)
-                pose_graph.nodes.append(
-                    o3d.pipelines.registration.PoseGraphNode(
-                        trans_odometry_inv))
-                pose_graph.edges.append(
-                    o3d.pipelines.registration.PoseGraphEdge(s,
-                                                             t,
-                                                             trans,
-                                                             info,
-                                                             uncertain=False))
-
     
+    for s in range(sid, eid):
+        t = s + 1
+        print("=> Matching Fragment [%05d-%05d] RGBD between frame [%d:%d]" % (sid, eid, s, t))
+        source_pcd = generate_point_cloud(color_files[s], depth_files[s])
+        target_pcd = generate_point_cloud(color_files[t], depth_files[t])
+        source_pcd.voxel_down_sample(voxel_size)
+        target_pcd.voxel_down_sample(voxel_size)
+        trans, _ = deep_global_registration(source_pcd, target_pcd, "3dmatch")
+        info = o3d.pipelines.registration.get_information_matrix_from_point_clouds(
+                source_pcd, target_pcd, voxel_size*1.5,
+                trans)
+        del source_pcd, target_pcd
+        gc.collect()
+        trans_odometry = np.dot(trans, trans_odometry)
+        pose_graph.nodes.append(
+            o3d.pipelines.registration.PoseGraphNode(
+                np.linalg.inv(trans_odometry)))
+        pose_graph.edges.append(
+            o3d.pipelines.registration.PoseGraphEdge(s,
+                                                    t,
+                                                    trans,
+                                                    info,
+                                                    uncertain=False))
+        # for t in range(s + 1, eid):
+        #     # odometry
+        #     if t == s + 1:
+        #         print("=> Matching Fragment [%05d-%05d] RGBD between frame [%d:%d]" % (sid, eid, s, t))
+        #         [success, trans, info] = register_one_rgbd_pair(s, t, color_files, depth_files, intrinsic, with_opencv)
+        #         trans_odometry = np.dot(trans, trans_odometry)
+        #         trans_odometry_inv = np.linalg.inv(trans_odometry)
+        #         pose_graph.nodes.append(
+        #             o3d.pipelines.registration.PoseGraphNode(
+        #                 trans_odometry_inv))
+        #         pose_graph.edges.append(
+        #             o3d.pipelines.registration.PoseGraphEdge(s,
+        #                                                      t,
+        #                                                      trans,
+        #                                                      info,
+        #                                                      uncertain=False))
+            
     print("=> Optimizing PoseGraph ...")
     option = o3d.pipelines.registration.GlobalOptimizationOption(
         max_correspondence_distance=voxel_size * 1.5,
@@ -245,7 +296,7 @@ def make_pointcloud_for_fragment(sid, eid, color_files, depth_files, intrinsic, 
         for idx in range(len(clusters_idx)):
             if len(clusters_idx[idx]) < len(pcd.points) * loss_ratio:
                 del_clusters+=clusters_idx[idx]
-        print(del_clusters)
+        # print(del_clusters)
         pcd_filter = o3d.geometry.PointCloud()
         pcd_filter.points = o3d.utility.Vector3dVector(np.delete(np.array(pcd.points), del_clusters, 0))
         pcd_filter.colors = o3d.utility.Vector3dVector(np.delete(np.array(pcd.colors), del_clusters, 0))
@@ -272,7 +323,7 @@ def process_single_fragment(sid, eid, image_names, depth_names, intrinsic, voxel
     print("=> Make pointcloud")
     make_pointcloud_for_fragment(sid, eid, 
                                 image_names, depth_names,
-                                intrinsic, True, 0.01)
+                                intrinsic, False, 0.01)
 
 ####################################################################
 # Point Clouds Main Process
@@ -299,26 +350,28 @@ from deep_global_registration.config import get_config
 from overlap import overlap_predator
 from rtvec2extrinsic import *
 
-def deep_global_registration(source, target, model='3dmatch'):
-    print("# Apply Deep Global Reg ")
-    if model=='3dmatch' and 'DGR_3dm' not in globals():
-        config = get_config()
-        # ResUNetBN2C-feat32-3dmatch-v0.05.pth   ResUNetBN2C-feat32-kitti-v0.3.pth
-        config.weights = "deep_global_registration/pth/ResUNetBN2C-feat32-3dmatch-v0.05.pth"
-        global DGR_3dm
-        DGR_3dm = DeepGlobalRegistration(config)
-    if model=='kitti' and 'DGR_kitti' not in globals():
-        config = get_config()
-        # ResUNetBN2C-feat32-3dmatch-v0.05.pth   ResUNetBN2C-feat32-kitti-v0.3.pth
-        config.weights = "deep_global_registration/pth/ResUNetBN2C-feat32-kitti-v0.3.pth"
-        global DGR_kitti
-        DGR_kitti = DeepGlobalRegistration(config)
-    
-    if model == '3dmatch':
-        _transformation_dgr, useSafeGuard = DGR_3dm.register(source, target)
-    if model == 'kitti' :
-        _transformation_dgr, useSafeGuard = DGR_kitti.register(source, target)
-    return _transformation_dgr, useSafeGuard
+
+def global_registration(source_down, target_down, voxel_size):
+    distance_threshold = voxel_size * 1.5
+
+    source_fpfh = o3d.pipelines.registration.compute_fpfh_feature(
+        source_down,
+        o3d.geometry.KDTreeSearchParamHybrid(radius=voxel_size * 1.5, max_nn=100))
+
+    target_fpfh = o3d.pipelines.registration.compute_fpfh_feature(
+        target_down,
+        o3d.geometry.KDTreeSearchParamHybrid(radius=voxel_size * 1.5, max_nn=100))
+    # print("=> voxel size: {} // distance threshold: {}".format(voxel_size, distance_threshold))
+    result = o3d.pipelines.registration.registration_ransac_based_on_feature_matching(
+        source_down, target_down, source_fpfh, target_fpfh, True,
+        distance_threshold,
+        o3d.pipelines.registration.TransformationEstimationPointToPlane(),
+        3, [
+            o3d.pipelines.registration.CorrespondenceCheckerBasedOnEdgeLength(0.9),
+            o3d.pipelines.registration.CorrespondenceCheckerBasedOnDistance(distance_threshold)
+        ], o3d.pipelines.registration.RANSACConvergenceCriteria(100000, 0.999))
+    return result.transformation
+
 
 def colored_icp_registration(source, target, voxel_size):
     print("# Colored ICP registration")
@@ -413,32 +466,34 @@ def get_transformation_from_correspondence_fragment(sf_range, tf_range):
     tf_pcd.transform(T_rigid)
     # o3d.visualization.draw_geometries([sf_pcd, tf_pcd])
     
-    print("=> global registration refine")
+    # print("=> global registration refine")
 
 
-    sf_pcd_down = copy.deepcopy(sf_pcd)
-    tf_pcd_down = copy.deepcopy(tf_pcd)
-    sf_pcd_down.voxel_down_sample(0.05)
-    tf_pcd_down.voxel_down_sample(0.05)
-    sf_pcd_down.estimate_normals()
-    tf_pcd_down.estimate_normals()
+    # sf_pcd_down = copy.deepcopy(sf_pcd)
+    # tf_pcd_down = copy.deepcopy(tf_pcd)
+    # sf_pcd_down.voxel_down_sample(0.05)
+    # tf_pcd_down.voxel_down_sample(0.05)
+    # sf_pcd_down.estimate_normals()
+    # tf_pcd_down.estimate_normals()
 
-    T_global_reg, useSageGuard = deep_global_registration(tf_pcd_down, sf_pcd_down, '3dmatch')
-    if useSageGuard:
-        o3d.visualization.draw_geometries([sf_pcd, tf_pcd])
-        sf_pcd_kitti = copy.deepcopy(sf_pcd)
-        tf_pcd_kitti = copy.deepcopy(tf_pcd)
+    # # T_global_reg, useSageGuard = deep_global_registration(tf_pcd_down, sf_pcd_down, '3dmatch')
+    # # if useSageGuard:
+    # #     o3d.visualization.draw_geometries([sf_pcd, tf_pcd])
+    # #     sf_pcd_kitti = copy.deepcopy(sf_pcd)
+    # #     tf_pcd_kitti = copy.deepcopy(tf_pcd)
         
-        # sf_pcd_kitti.voxel_down_sample(0.3)
-        # tf_pcd_kitti.voxel_down_sample(0.3)
-        sf_pcd_kitti.estimate_normals()
-        tf_pcd_kitti.estimate_normals()
+    # #     # sf_pcd_kitti.voxel_down_sample(0.3)
+    # #     # tf_pcd_kitti.voxel_down_sample(0.3)
+    # #     sf_pcd_kitti.estimate_normals()
+    # #     tf_pcd_kitti.estimate_normals()
 
-        T_global_reg = overlap_predator(tf_pcd_kitti, sf_pcd_kitti)
+    # #     T_global_reg = overlap_predator(tf_pcd_kitti, sf_pcd_kitti)
     
-    tf_pcd.transform(T_global_reg)
-    tf_pcd_down.transform(T_global_reg)
-    # o3d.visualization.draw_geometries([sf_pcd, tf_pcd])
+    # T_global_reg = global_registration(tf_pcd_down, sf_pcd_down, 0.05)
+    
+    # tf_pcd.transform(T_global_reg)
+    # tf_pcd_down.transform(T_global_reg)
+    # # o3d.visualization.draw_geometries([sf_pcd, tf_pcd])
     
     print("=> color icp registration deep refine")
     sf_pcd_down = copy.deepcopy(sf_pcd)
@@ -451,7 +506,8 @@ def get_transformation_from_correspondence_fragment(sf_range, tf_range):
     tf_pcd.transform(T_color_reg)
     tf_pcd_down.transform(T_color_reg)
 
-    T_trans = np.dot(T_rigid, np.dot(T_global_reg, T_color_reg))
+    # T_trans = np.dot(T_rigid, np.dot(T_global_reg, T_color_reg))
+    T_trans = np.dot(T_rigid, T_color_reg)
     # o3d.visualization.draw_geometries([sf_pcd, tf_pcd])
     
     return T_trans
@@ -472,6 +528,11 @@ for graph in tqdm(pose_graph_files):
 
 T = np.identity(4)
 pcds = []
+pcd = o3d.geometry.PointCloud()
+vis = o3d.visualization.VisualizerWithEditing()
+vis.add_geometry(pcd)
+vis.create_window()
+
 for fragment_idx in tqdm(range(0, n_fragments), desc="Load fragment"):
     
     # get transformation with next fragment
@@ -494,9 +555,15 @@ for fragment_idx in tqdm(range(0, n_fragments), desc="Load fragment"):
     T = np.dot(T, T_trans)
     # tf_pcd.transform(T_global)
     tf_pcd.transform(T)
-    # pcd = volume.extract_point_cloud()
     pcds.append(tf_pcd)
-    # o3d.visualization.draw_geometries(pcds)
+
+    pcd = copy.deepcopy(tf_pcd)
+    pcd.transform([[1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1]])
+    vis.add_geometry(pcd)
+    vis.poll_events()
+    vis.update_renderer()
+    
+vis.destroy_window()    
 merged_pcd = merge_pcds(pcds)
 # o3d.io.write_point_cloud("outputs/fragments/MAIN.ply", merged_pcd, False, True)
 o3d.visualization.draw_geometries([merged_pcd])

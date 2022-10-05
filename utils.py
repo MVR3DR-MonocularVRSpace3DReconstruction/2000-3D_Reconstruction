@@ -120,9 +120,9 @@ def generate_point_cloud_with_camera_pose(image_dir:str, depth_dir:str, camera_p
     pcd = o3d.geometry.PointCloud.create_from_rgbd_image(
         rgbd,
         o3d.camera.PinholeCameraIntrinsic(o3d.camera.PinholeCameraIntrinsicParameters.PrimeSenseDefault),
-        # camera_pose,
+        camera_pose,
     )
-    pcd.transform(camera_pose)
+    # pcd.transform(camera_pose)
     return pcd
 
 def merge_pcds(pcd_list):

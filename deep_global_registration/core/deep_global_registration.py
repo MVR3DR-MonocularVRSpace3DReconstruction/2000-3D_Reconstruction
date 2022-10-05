@@ -64,7 +64,7 @@ def registration_ransac_based_on_feature_matching(pcd0, pcd1, feats0, feats1,
       pcd0, pcd1, source_feat, target_feat, True, distance_threshold,
       o3d.pipelines.registration.TransformationEstimationPointToPlane(), 3,
       [o3d.pipelines.registration.CorrespondenceCheckerBasedOnDistance(distance_threshold)],
-      o3d.pipelines.registration.RANSACConvergenceCriteria(4000000, num_iterations))
+      o3d.pipelines.registration.RANSACConvergenceCriteria(num_iterations, 4000000))
 
   return result.transformation
 
@@ -77,14 +77,14 @@ def registration_ransac_based_on_correspondence(pcd0, pcd1, idx0, idx1,
   # result = o3d.pipelines.registration.registration_ransac_based_on_correspondence(
   #     pcd0, pcd1, corres, distance_threshold,
   #     o3d.pipelines.registration.TransformationEstimationPointToPoint(False), 4,
-  #     o3d.pipelines.registration.RANSACConvergenceCriteria(4000000, num_iterations))
+  #     o3d.pipelines.registration.RANSACConvergenceCriteria(num_iterations, 4000000))
 
   result = o3d.pipelines.registration.registration_ransac_based_on_correspondence(
         pcd0, pcd1, corres, distance_threshold, 
         o3d.pipelines.registration.TransformationEstimationPointToPlane(), 3,
         [o3d.pipelines.registration.CorrespondenceCheckerBasedOnEdgeLength(0.9),
          o3d.pipelines.registration.CorrespondenceCheckerBasedOnDistance(distance_threshold)
-         ], o3d.pipelines.registration.RANSACConvergenceCriteria(4000000, num_iterations))
+         ], o3d.pipelines.registration.RANSACConvergenceCriteria(num_iterations, 4000000))
 
   return result.transformation
 

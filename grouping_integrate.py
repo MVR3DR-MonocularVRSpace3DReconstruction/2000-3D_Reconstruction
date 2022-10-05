@@ -16,7 +16,7 @@ import cv2
 # Image Grouping
 ####################################################################
 # data_dir = "data/redwood-livingroom/"
-data_dir = "data/redwood-bedroom/"
+data_dir = "data/redwood-livingroom/"
 image_names = sorted(glob.glob(data_dir+'image/*.jpg'))
 depth_names = sorted(glob.glob(data_dir+'depth/*.png'))
 print("==> Evaluate Images.. ")
@@ -299,12 +299,35 @@ from deep_global_registration.config import get_config
 from overlap import overlap_predator
 from rtvec2extrinsic import *
 
+
+def execute_global_registration(source_down, target_down, voxel_size):
+    distance_threshold = voxel_size * 1.5
+
+    source_fpfh = o3d.pipelines.registration.compute_fpfh_feature(
+        source_down,
+        o3d.geometry.KDTreeSearchParamHybrid(radius=voxel_size * 5, max_nn=100))
+
+    target_fpfh = o3d.pipelines.registration.compute_fpfh_feature(
+        target_down,
+        o3d.geometry.KDTreeSearchParamHybrid(radius=voxel_size * 5, max_nn=100))
+    # print("=> voxel size: {} // distance threshold: {}".format(voxel_size, distance_threshold))
+    result = o3d.pipelines.registration.registration_ransac_based_on_feature_matching(
+        source_down, target_down, source_fpfh, target_fpfh, True,
+        distance_threshold,
+        o3d.pipelines.registration.TransformationEstimationPointToPoint(False),
+        3, [
+            o3d.pipelines.registration.CorrespondenceCheckerBasedOnEdgeLength(0.9),
+            o3d.pipelines.registration.CorrespondenceCheckerBasedOnDistance(distance_threshold)
+        ], o3d.pipelines.registration.RANSACConvergenceCriteria(100000, 0.999))
+    return result.transformation
+
+
 def deep_global_registration(source, target, model='3dmatch'):
     print("# Apply Deep Global Reg ")
     if model=='3dmatch' and 'DGR_3dm' not in globals():
         config = get_config()
-        # ResUNetBN2C-feat32-3dmatch-v0.05.pth   ResUNetBN2C-feat32-kitti-v0.3.pth
-        config.weights = "deep_global_registration/pth/ResUNetBN2C-feat32-3dmatch-v0.05.pth"
+        # ResUNetBN2C-feat32-3dmatch-v0.05.pth   ResUNetBN2C-feat32-kitti-v0.3.pth   acc.875.pth
+        config.weights = "deep_global_registration/pth/acc.875.pth"
         global DGR_3dm
         DGR_3dm = DeepGlobalRegistration(config)
     if model=='kitti' and 'DGR_kitti' not in globals():

@@ -138,20 +138,20 @@ def run(config):
 	pcds = read_point_clouds(data_dir=config['path_dataset'], down_sample=config['down_sample'])
 	print("* Total "+str(len(pcds))+" point clouds loaded. ")
 	# o3d.visualization.draw_geometries(pcds)
-	reged_pcds = [pcds[0]]
+	merged_pcd = pcds[0]
 	vis = o3d.visualization.VisualizerWithEditing()
-	vis.add_geometry(reged_pcds[0])
+	vis.add_geometry(merged_pcd)
 	vis.create_window()
 	for pcd in tqdm(pcds[1:]):
-		T, _, _ = global_registration(pcd, reged_pcds[-1])
+		T, _, _ = global_registration(pcd, merged_pcd)
   		
 		pcd.transform(T)
 		
 		# stored pcd
-		reged_pcds.append(pcd)
-		merged_pcd = merge_pcds(reged_pcds)
+		
+		merged_pcd = merge_pcds([merged_pcd, pcd])
 		# o3d.visualization.draw_geometries([merged_pcd])
-		o3d.io.write_point_cloud(config['outputs_dir']+"Appended_pair2pair.ply", merged_pcd)
+		o3d.io.write_point_cloud(config['outputs_dir']+"Appended_integrate.ply", merged_pcd)
 		vis.clear_geometries()
 		vis.add_geometry(merged_pcd)
 		vis.poll_events()
@@ -159,8 +159,8 @@ def run(config):
     
 	vis.destroy_window()    
 	# merged_pcd = merge_pcds(reged_pcds)
-	# o3d.io.write_point_cloud(config['outputs_dir']+"Appended_pair2pair.ply", merged_pcd)
-	o3d.visualization.draw_geometries(reged_pcds)
+	# o3d.io.write_point_cloud(config['outputs_dir']+"Appended_integrate.ply", merged_pcd)
+	o3d.visualization.draw_geometries(merged_pcd)
 
 if __name__ == '__main__':
 	config = {'path_dataset':"outputs/",

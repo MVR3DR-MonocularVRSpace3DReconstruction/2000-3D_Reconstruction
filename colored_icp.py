@@ -52,10 +52,13 @@ def colored_icp_registration(source, target, voxel_size):
                 o3d.pipelines.registration.ICPConvergenceCriteria(relative_fitness=1e-6,
                                                                   relative_rmse=1e-6,
                                                                   max_iteration=max_it))
+            T = result.transformation
         except Exception as e:
             print("Error: \n",e)
+            T = np.identity(4)
             continue
-        T = result.transformation
+        
+        
     return T
 
 def colored_icp(target, source, voxel_size = 0.05):

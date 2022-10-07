@@ -63,7 +63,7 @@ def read_point_clouds(data_dir = "./data/redwood-livingroom/",down_sample=0.1):
     pcds = []
     for pcd in tqdm(sorted(glob.glob(data_dir+'fragments/*.ply'))):
         temp_pcd = o3d.io.read_point_cloud(pcd)
-        temp_pcd = temp_pcd.random_down_sample(down_sample)
+        temp_pcd = temp_pcd.voxel_down_sample(down_sample)
         temp_pcd.estimate_normals()
         temp_pcd.transform([[1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1]])
         pcds.append(temp_pcd)
@@ -76,12 +76,13 @@ def read_pose_graph(data_dir = "./data/redwood-livingroom/"):
         graphs.append(temp)
     return graphs
 
-def read_rgbd_image(color_file, depth_file, convert_rgb_to_intensity):
+def read_rgbd_image(color_file, depth_file, depth_trunc=1000, convert_rgb_to_intensity=False):
     color = o3d.io.read_image(color_file)
     depth = o3d.io.read_image(depth_file)
     rgbd_image = o3d.geometry.RGBDImage.create_from_color_and_depth(
         color,
         depth,
+        depth_trunc=depth_trunc,
         convert_rgb_to_intensity=convert_rgb_to_intensity)
     return rgbd_image
 
@@ -95,11 +96,9 @@ def show_rgbd(rgbd):
     plt.show()
 
 def generate_point_cloud(image_dir:str, depth_dir:str):
-    color_raw = o3d.io.read_image(image_dir)
-    depth_raw = o3d.io.read_image(depth_dir)
-    rgbd_image = o3d.geometry.RGBDImage.create_from_color_and_depth(color_raw, depth_raw,convert_rgb_to_intensity=False)
+    rgbd = read_rgbd_image(image_dir, depth_dir)
     pcd = o3d.geometry.PointCloud.create_from_rgbd_image(
-        rgbd_image,
+        rgbd,
         o3d.camera.PinholeCameraIntrinsic(o3d.camera.PinholeCameraIntrinsicParameters.PrimeSenseDefault),
     )
     # Flip it, otherwise the pointcloud will be upside down
@@ -107,16 +106,12 @@ def generate_point_cloud(image_dir:str, depth_dir:str):
     return pcd
 
 def generate_point_cloud_with_camera_pose(image_dir:str, depth_dir:str, camera_pose):
-
-    color = o3d.io.read_image(image_dir)
-    depth = o3d.io.read_image(depth_dir)
     # random noise
     # random.seed(time())
     # camera_pose[0][3] += random.randint(-5000,5000) / 100000
     # camera_pose[1][3] += random.randint(-5000,5000) / 100000
     # camera_pose[2][3] += random.randint(-5000,5000) / 100000
-    
-    rgbd = o3d.geometry.RGBDImage.create_from_color_and_depth(color, depth,convert_rgb_to_intensity=False)
+    rgbd = read_rgbd_image(image_dir, depth_dir)
     pcd = o3d.geometry.PointCloud.create_from_rgbd_image(
         rgbd,
         o3d.camera.PinholeCameraIntrinsic(o3d.camera.PinholeCameraIntrinsicParameters.PrimeSenseDefault),

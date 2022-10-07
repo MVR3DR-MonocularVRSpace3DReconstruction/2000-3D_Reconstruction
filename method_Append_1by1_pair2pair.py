@@ -94,8 +94,8 @@ def global_registration(source, target, max_correspondence_distance_fine=0.03):
     target_down = copy.deepcopy(target)
     source_down.voxel_down_sample(down_voxel_size)
     target_down.voxel_down_sample(down_voxel_size)
-    source_down.estimate_normals(o3d.geometry.KDTreeSearchParamHybrid(radius=down_voxel_size*2, max_nn=30))
-    target_down.estimate_normals(o3d.geometry.KDTreeSearchParamHybrid(radius=down_voxel_size*2, max_nn=30))
+    source_down.estimate_normals()
+    target_down.estimate_normals()
 
     transformation_dgr, useSafeGuard = DGR.register(source_down, target_down)
     overlap_ratio = compute_overlap_ratio(source_down, target_down, transformation_dgr, down_voxel_size)
@@ -135,7 +135,7 @@ def deep_global_registration(source, target):
     return _transformation_dgr
 
 def run(config):
-	pcds = read_point_clouds(data_dir=config['path_dataset'], down_sample=config['down_sample'])
+	pcds = load_point_clouds()
 	print("* Total "+str(len(pcds))+" point clouds loaded. ")
 	# o3d.visualization.draw_geometries(pcds)
 	reged_pcds = [pcds[0]]
@@ -151,7 +151,7 @@ def run(config):
 		reged_pcds.append(pcd)
 		merged_pcd = merge_pcds(reged_pcds)
 		# o3d.visualization.draw_geometries([merged_pcd])
-		o3d.io.write_point_cloud(config['outputs_dir']+"Appended_pair2pair.ply", merged_pcd)
+		o3d.io.write_point_cloud(config['outputs_dir']+"Appended_1by1_pair2pair.ply", merged_pcd)
 		vis.clear_geometries()
 		vis.add_geometry(merged_pcd)
 		vis.poll_events()

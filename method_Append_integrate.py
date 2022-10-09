@@ -1,4 +1,5 @@
 
+from heapq import merge
 from utils import *
 from colored_icp import *
 from tqdm import tqdm
@@ -135,35 +136,37 @@ def deep_global_registration(source, target):
     return _transformation_dgr
 
 def run(config):
-	pcds = read_point_clouds(data_dir=config['path_dataset'], down_sample=config['down_sample'])
-	print("* Total "+str(len(pcds))+" point clouds loaded. ")
-	# o3d.visualization.draw_geometries(pcds)
-	merged_pcd = pcds[0]
-	vis = o3d.visualization.VisualizerWithEditing()
-	vis.add_geometry(merged_pcd)
-	vis.create_window()
-	for pcd in tqdm(pcds[1:]):
-		T, _, _ = global_registration(pcd, merged_pcd)
-  		
-		pcd.transform(T)
-		
-		# stored pcd
-		
-		merged_pcd = merge_pcds([merged_pcd, pcd])
-		# o3d.visualization.draw_geometries([merged_pcd])
-		o3d.io.write_point_cloud(config['outputs_dir']+"Appended_integrate.ply", merged_pcd)
-		vis.clear_geometries()
-		vis.add_geometry(merged_pcd)
-		vis.poll_events()
-		vis.update_renderer()
-    
-	vis.destroy_window()    
-	# merged_pcd = merge_pcds(reged_pcds)
-	# o3d.io.write_point_cloud(config['outputs_dir']+"Appended_integrate.ply", merged_pcd)
-	o3d.visualization.draw_geometries(merged_pcd)
+    pcds = read_point_clouds(data_dir=config['path_dataset'], down_sample=config['down_sample'])
+    print("* Total "+str(len(pcds))+" point clouds loaded. ")
+    # o3d.visualization.draw_geometries(pcds)
+    merged_pcd = pcds[0]
+    vis = o3d.visualization.VisualizerWithEditing()
+    vis.add_geometry(merged_pcd)
+    vis.create_window()
+    for pcd in tqdm(pcds[1:]):
+        T, _, _ = global_registration(pcd, merged_pcd)
+
+        pcd.transform(T)
+
+        # stored pcd
+
+        merged_pcd = merge_pcds([merged_pcd, pcd])  
+        merged_pcd.voxel_down_sample(config['down_sample'])
+        merged_pcd.estimate_normals()
+        # o3d.visualization.draw_geometries([merged_pcd])
+        o3d.io.write_point_cloud(config['outputs_dir']+"Appended_integrate.ply", merged_pcd)
+        vis.clear_geometries()
+        vis.add_geometry(merged_pcd)
+        vis.poll_events()
+        vis.update_renderer()
+
+    vis.destroy_window()    
+    # merged_pcd = merge_pcds(reged_pcds)
+    # o3d.io.write_point_cloud(config['outputs_dir']+"Appended_integrate.ply", merged_pcd)
+    o3d.visualization.draw_geometries(merged_pcd)
 
 if __name__ == '__main__':
-	config = {'path_dataset':"outputs/",
+	config = {'path_dataset':"outputs/livingroom_S5_N50_E5/",
 				'outputs_dir': "outputs/",
 				"down_sample": 0.01}
 	run(config)

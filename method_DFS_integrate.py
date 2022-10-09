@@ -14,6 +14,8 @@ from utils import *
 from colored_icp import *
 from overlap import overlap_predator
 
+from rtvec2extrinsic import *
+
 SKIP_STEP = 5
 N_PER_FRAGMENT = 50
 EXTEND_RATIO = 5
@@ -23,8 +25,8 @@ BASIC_VOXEL_SIZE = 0.02
 
 
 data_dir = "outputs/livingroom_S5_N50_E5/"
-image_names = sorted(glob.glob(data_dir+'image/*.jpg'))
-depth_names = sorted(glob.glob(data_dir+'depth/*.png'))
+image_names = sorted(glob.glob('data/redwood-livingroom/image/*.jpg'))
+depth_names = sorted(glob.glob('data/redwood-livingroom/depth/*.png'))
 
 image_names = [image_names[idx] for idx in range(0,len(image_names), SKIP_STEP)]
 depth_names = [depth_names[idx] for idx in range(0,len(depth_names), SKIP_STEP)]
@@ -32,6 +34,20 @@ depth_names = [depth_names[idx] for idx in range(0,len(depth_names), SKIP_STEP)]
 groups = np.loadtxt(data_dir+"posegraph/groups.txt")
 groups = [[int(group[0]), int(group[1])] for group in groups]
 
+pose_graph_files = sorted(glob.glob(data_dir+'posegraph/fragment_*.json'))
+graphs = [o3d.io.read_pose_graph(graph) for graph in pose_graph_files]
+
+assert len(graphs) == len(groups)
+
+def read_point_clouds(data_dir = "./data/redwood-livingroom/",down_sample=0.1):
+    pcds = []
+    for pcd in tqdm(sorted(glob.glob(data_dir+'fragments/*.ply'))):
+        temp_pcd = o3d.io.read_point_cloud(pcd)
+        temp_pcd = temp_pcd.voxel_down_sample(down_sample)
+        temp_pcd.estimate_normals()
+        # temp_pcd.transform([[1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1]])
+        pcds.append(temp_pcd)
+    return pcds
 
 def get_matching_indices(source, target, trans, search_voxel_size, K=None):
   source_copy = copy.deepcopy(source)
@@ -156,34 +172,87 @@ def global_registration(source, target, max_correspondence_distance_fine=0.03):
         transformation)
 
     return transformation, information, uncertain
+    
+def integrate_pcd(left_range, right_range, left_trans, right_trans):
+    # print(left_range, right_range, left_trans, right_trans)
+    assert left_range[1]-left_range[0] == len(left_trans)
+    assert right_range[1]-right_range[0] == len(right_trans)
+    volume = o3d.pipelines.integration.ScalableTSDFVolume(
+        voxel_length=3.0 / 512.0,
+        sdf_trunc=0.04,
+        color_type=o3d.pipelines.integration.TSDFVolumeColorType.RGB8)
 
-def pcd_fusion_dfs(pcd_range, pcd_list, depth):
+    # enumerate left fragments
+    for idx in range(*left_range):
+        # enumerate frames in fragments
+        idx_abs = idx-left_range[0]
+        poses = graphs[idx]
+        for iidx in range(*groups[idx]):
+            # print("poses",len(poses.nodes),"idx",idx,"left range",left_range,"groups",groups[idx],"iidx", iidx)
+            pose = left_trans[idx_abs] @ np.linalg.inv(poses.nodes[iidx-groups[idx][0]].pose)
+            color = o3d.io.read_image(image_names[iidx])
+            depth = o3d.io.read_image(depth_names[iidx])
+            rgbd = o3d.geometry.RGBDImage.create_from_color_and_depth(
+                color, depth, depth_trunc=1000, convert_rgb_to_intensity=False)
+            volume.integrate(rgbd,
+                o3d.camera.PinholeCameraIntrinsic(
+                    o3d.camera.PinholeCameraIntrinsicParameters.PrimeSenseDefault),
+                np.linalg.inv(pose))
+    
+    # enumerate right fragments
+    for idx in range(*right_range):
+        # enumerate frames in fragments
+        idx_abs = idx-right_range[0]
+        poses = graphs[idx]
+        for iidx in range(*groups[idx]):
+            pose = right_trans[idx_abs] @ np.linalg.inv(poses.nodes[iidx-groups[idx][0]].pose)
+            color = o3d.io.read_image(image_names[iidx])
+            depth = o3d.io.read_image(depth_names[iidx])
+            rgbd = o3d.geometry.RGBDImage.create_from_color_and_depth(
+                color, depth, depth_trunc=1000, convert_rgb_to_intensity=False)
+            volume.integrate(rgbd,
+                o3d.camera.PinholeCameraIntrinsic(
+                    o3d.camera.PinholeCameraIntrinsicParameters.PrimeSenseDefault),
+                np.linalg.inv(pose))
+    mesh = volume.extract_triangle_mesh()
+    mesh.compute_vertex_normals()
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = mesh.vertices
+    pcd.colors = mesh.vertex_colors
+    # o3d.visualization.draw_geometries([pcd])
+    return pcd
+        
+def pcd_integrate_dfs(pcd_range, pcd_list, depth):
     n_pcds = pcd_range[1] - pcd_range[0]
     # return single pcd
     if n_pcds < 2:
         print("  |"*(depth-1)+"---> Single Point Cloud [Returned]")
-        return pcd_list[0]
-    # get half of merged pcds
-    left_pcd = pcd_fusion_dfs([pcd_range[0], pcd_range[0]+n_pcds//2], pcd_list[:n_pcds//2], depth+1)
-    right_pcd = pcd_fusion_dfs([pcd_range[0]+n_pcds//2, pcd_range[1]], pcd_list[n_pcds//2:], depth+1)
-    print("  |"*(depth-1)+"---> Registration..")
-
-    T, _, _ = global_registration(left_pcd, right_pcd)
-    left_pcd.transform(T)
-    merged_pcd = merge_pcds([left_pcd,right_pcd])
-    # merged_pcd = integrate_pcds(pcd_range)
-    merged_pcd.voxel_down_sample(BASIC_VOXEL_SIZE)
+        return pcd_list[0], [np.identity(4)]
     
+    left_range = [pcd_range[0], pcd_range[0]+n_pcds//2]
+    right_range = [pcd_range[0]+n_pcds//2, pcd_range[1]]
+    print("  |"*(depth-1)+"---> left range:{}  right range:{}".format(left_range, right_range))
+
+    # get half of merged pcds
+    left_pcd, left_trans = pcd_integrate_dfs(left_range, pcd_list[:n_pcds//2], depth+1)
+    right_pcd, right_trans = pcd_integrate_dfs(right_range, pcd_list[n_pcds//2:], depth+1)
+    print("  |"*(depth-1)+"---> Registration..")
+    # o3d.visualization.draw_geometries([left_pcd, right_pcd])
+    T, _, _ = global_registration(left_pcd, right_pcd)
+    left_trans = [trans @ T for trans in left_trans]
     print("  |"*(depth-1)+"---> Merge pcds")
+    merged_pcd = integrate_pcd(left_range, right_range, left_trans, right_trans)
+    merged_pcd.voxel_down_sample(BASIC_VOXEL_SIZE)
+    merged_pcd.estimate_normals()
+    
     # storage temp
     time_cost = time()-start_time
     timestamp = "{}m{}s".format(int((time_cost)//60), int(time_cost - (time_cost)//60*60))
-    o3d.io.write_point_cloud("./outputs/dfs_single/D{:0>3}_L{:0>3}_{}.ply".format(depth, n_pcds, timestamp), merged_pcd)
+    o3d.io.write_point_cloud("./outputs/dfs_integrate/D{:0>3}_L{:0>3}_{}.ply".format(depth, n_pcds, timestamp), merged_pcd)
     # o3d.visualization.draw_geometries([merged_pcd])
 
     print("  |"*(depth-1)+"---> List length: {} Stack Depth: {} [Merged Complete]".format(n_pcds, depth))
-    
-    return merged_pcd
+    return merged_pcd, left_trans+right_trans
 
 if __name__ == '__main__':
 
@@ -198,12 +267,12 @@ if __name__ == '__main__':
 	# o3d.visualization.draw_geometries(pcds)
 	pause_time = time() - pause_time
 	merged_pcd = o3d.geometry.PointCloud()
-	main_pcd =  pcd_fusion_dfs([0, len(pcds)], pcds, 0)
+	main_pcd =  pcd_integrate_dfs([0, len(pcds)], pcds, 0)
 
 
 	end_time = time()
 	time_cost = end_time-start_time-pause_time
 	print("\n## Total cost {}s = {}m{}s.".format(
 		time_cost, int((time_cost)//60), int(time_cost - (time_cost)//60*60)))
-	o3d.io.write_point_cloud("./outputs/dfs/DFS-outputs.ply", main_pcd)
+	o3d.io.write_point_cloud("./outputs/dfs_integrate/DFS-outputs.ply", main_pcd)
 	o3d.visualization.draw_geometries([main_pcd])

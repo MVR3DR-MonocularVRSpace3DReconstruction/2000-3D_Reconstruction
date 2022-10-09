@@ -214,22 +214,13 @@ def full_registration(pcds, correspondence_range_ratio):
 start_time = time()
 
 voxel_size = 0.01
-# pcds_down = load_point_clouds(
-#     data_dir = "./data/redwood-livingroom/",
-#     camera_pose_file = "livingroom.log",
-#     step = 10,
-#     voxel_size=voxel_size)
-
-pcds_down = read_point_clouds(data_dir = "outputs/",down_sample=0.8)
-# pcds_down = load_point_clouds()
-pause_time = time()
-o3d.visualization.draw_geometries(pcds_down)
-pause_time = time() - pause_time
+# pcds_down = read_point_clouds(data_dir = "outputs/",down_sample=0.8)
+pcds_down = load_point_clouds("data/redwood-boardroom","boardroom.log", 50, voxel_size)
 
 print("\n\n# Full registration ...")
 correspondence_distance = voxel_size * 1.5 # 1.5
-# with o3d.utility.VerbosityContextManager(o3d.utility.VerbosityLevel.Debug) as cm:
-pose_graph = full_registration(pcds_down, 0.1) # 15/len(pcds_down)                     
+
+pose_graph = full_registration(pcds_down, 0.5) # 15/len(pcds_down)                     
 ########
 
 print("\n\n# Optimizing PoseGraph ...")
@@ -240,13 +231,12 @@ option = o3d.pipelines.registration.GlobalOptimizationOption(
     preference_loop_closure=2.0)
 
 
-with o3d.utility.VerbosityContextManager(o3d.utility.VerbosityLevel.Debug) as cm:
-    o3d.pipelines.registration.global_optimization(
-        pose_graph,
-        # o3d.pipelines.registration.GlobalOptimizationLevenbergMarquardt(),
-        o3d.pipelines.registration.GlobalOptimizationGaussNewton(),
-        o3d.pipelines.registration.GlobalOptimizationConvergenceCriteria(),
-        option)
+o3d.pipelines.registration.global_optimization(
+    pose_graph,
+    # o3d.pipelines.registration.GlobalOptimizationLevenbergMarquardt(),
+    o3d.pipelines.registration.GlobalOptimizationGaussNewton(),
+    o3d.pipelines.registration.GlobalOptimizationConvergenceCriteria(),
+    option)
 ########
 
 print("\n\n# Pose graph length: ",pose_graph)
@@ -256,10 +246,10 @@ for point_id in tqdm(range(len(pcds_down))):
     pcds_down[point_id].transform(pose_graph.nodes[point_id].pose)
 
 end_time = time()
-time_cost = end_time-start_time-pause_time
+time_cost = end_time-start_time
 print("\n## Total cost {}s = {}m{}s.".format(
     time_cost, int((time_cost)//60), int(time_cost - (time_cost)//60*60)))
 
 pcd_combined = merge_pcds(pcds_down)
-o3d.io.write_point_cloud("./outputs/multiway_registration.ply", pcd_combined)
+o3d.io.write_point_cloud("./outputs/multiway_registration_boardroom_step10.ply", pcd_combined)
 o3d.visualization.draw_geometries(pcds_down)

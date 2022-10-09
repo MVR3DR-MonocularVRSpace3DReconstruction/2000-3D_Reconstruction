@@ -8,6 +8,13 @@ from overlap import overlap_predator
 from deep_global_registration.core.deep_global_registration import DeepGlobalRegistration
 from deep_global_registration.config import get_config
 
+SKIP_STEP = 5
+N_PER_FRAGMENT = 50
+EXTEND_RATIO = 5
+
+DOWN_SAMPLE_VOXEL_SIZE = 0.05
+BASIC_VOXEL_SIZE = 0.02
+
 
 def get_matching_indices(source, target, trans, search_voxel_size, K=None):
   source_copy = copy.deepcopy(source)
@@ -89,38 +96,49 @@ def global_registration(source, target, max_correspondence_distance_fine=0.03):
         config.weights = "deep_global_registration/pth/ResUNetBN2C-feat32-3dmatch-v0.05.pth"
         global DGR
         DGR = DeepGlobalRegistration(config)
-    down_voxel_size = 0.05
     source_down = copy.deepcopy(source)
     target_down = copy.deepcopy(target)
-    source_down.voxel_down_sample(down_voxel_size)
-    target_down.voxel_down_sample(down_voxel_size)
-    source_down.estimate_normals(o3d.geometry.KDTreeSearchParamHybrid(radius=down_voxel_size*2, max_nn=30))
-    target_down.estimate_normals(o3d.geometry.KDTreeSearchParamHybrid(radius=down_voxel_size*2, max_nn=30))
+    source_down.voxel_down_sample(DOWN_SAMPLE_VOXEL_SIZE)
+    target_down.voxel_down_sample(DOWN_SAMPLE_VOXEL_SIZE)
+    source_down.estimate_normals(o3d.geometry.KDTreeSearchParamHybrid(radius=DOWN_SAMPLE_VOXEL_SIZE*2, max_nn=30))
+    target_down.estimate_normals(o3d.geometry.KDTreeSearchParamHybrid(radius=DOWN_SAMPLE_VOXEL_SIZE*2, max_nn=30))
 
+    
     transformation_dgr, useSafeGuard = DGR.register(source_down, target_down)
-    overlap_ratio = compute_overlap_ratio(source_down, target_down, transformation_dgr, down_voxel_size)
-    print(overlap_ratio)
+    dgr_overlap_ratio = compute_overlap_ratio(source_down, target_down, transformation_dgr, BASIC_VOXEL_SIZE)
+    # print(overlap_ratio)
     
-    if overlap_ratio < 0.3:
-        transformation_dgr = overlap_predator(source_down, target_down)
-        overlap_ratio = compute_overlap_ratio(source_down, target_down, transformation_dgr, down_voxel_size)
-        print("fix to:",overlap_ratio)
-    if overlap_ratio < 0.3:
-        transformation_dgr = ransac_global_registration(source_down, target_down, down_voxel_size)
-        overlap_ratio = compute_overlap_ratio(source_down, target_down, transformation_dgr, down_voxel_size)
-        print("fix to:",overlap_ratio)
-        # input()
+    if dgr_overlap_ratio < 0.3:
+        transformation_overlap = overlap_predator(source_down, target_down)
+        op_overlap_ratio = compute_overlap_ratio(source_down, target_down, transformation_overlap, BASIC_VOXEL_SIZE)
+        # print("fix to:",overlap_ratio)
 
-    source_down.transform(transformation_dgr)
+        transformation_ransac = ransac_global_registration(source_down, target_down, DOWN_SAMPLE_VOXEL_SIZE)
+        ransac_overlap_ratio = compute_overlap_ratio(source_down, target_down, transformation_ransac, BASIC_VOXEL_SIZE)
+        # print("fix to:",overlap_ratio)
+        # input()
+        chooseT = 0
+        if dgr_overlap_ratio >= op_overlap_ratio and dgr_overlap_ratio >= ransac_overlap_ratio:
+            transformation = transformation_dgr
+        elif op_overlap_ratio >= dgr_overlap_ratio and op_overlap_ratio >= ransac_overlap_ratio:
+            transformation = transformation_overlap
+            chooseT = 1
+        else:
+            transformation = transformation_ransac
+            chooseT = 2
+        print("=> DGR Overlap ratio:{} too small, fix to {}\n//overlap predator:{}\n//ransac:{}".format(
+            dgr_overlap_ratio, ["DGR","PREDATOR","RANSAC"][chooseT], op_overlap_ratio, ransac_overlap_ratio))
+    else:
+        transformation = transformation_dgr
+    source_down.transform(transformation)
     
-    transformation_icp = colored_icp_registration(source_down, target_down, down_voxel_size)
+    transformation_icp = colored_icp_registration(source_down, target_down, DOWN_SAMPLE_VOXEL_SIZE)
     
-    transformation = transformation_dgr @ transformation_icp
+    transformation = transformation @ transformation_icp
     information = o3d.pipelines.registration.get_information_matrix_from_point_clouds(
         source_down, target_down, max_correspondence_distance_fine,
         transformation)
-    # source_down.transform(transformation)
-    # o3d.visualization.draw_geometries([source_down, target_down])
+
     return transformation, information, useSafeGuard
 
 def deep_global_registration(source, target):

@@ -1,4 +1,5 @@
 # Base package
+from doctest import SKIP
 import os
 import numpy as np
 import glob
@@ -15,15 +16,18 @@ import cv2
 # Config 
 ####################################################################
 
-SKIP_STEP = 3
+SKIP_STEP = 5
 N_PER_FRAGMENT = 50
 EXTEND_RATIO = 5
+
+DOWN_SAMPLE_VOXEL_SIZE = 0.05
+BASIC_VOXEL_SIZE = 0.02
 
 ####################################################################
 # Grouping
 ####################################################################
 # data_dir = "data/redwood-livingroom/"
-data_dir = "data/redwood-livingroom/"
+data_dir = "data/redwood-boardroom/"
 image_names = sorted(glob.glob(data_dir+'image/*.jpg'))
 depth_names = sorted(glob.glob(data_dir+'depth/*.png'))
 
@@ -93,7 +97,7 @@ def make_fragments_groups(image_names, mode = "value", steps=50, extend_img_rati
 # Main proc
 #===================================================================
 
-read_file = False
+read_file = True
 if read_file:
     groups = np.loadtxt("outputs/posegraph/groups.txt")
     groups = [[int(group[0]), int(group[1])] for group in groups] 
@@ -249,39 +253,53 @@ def global_registration(source, target, max_correspondence_distance_fine=0.03):
         config.weights = "deep_global_registration/pth/ResUNetBN2C-feat32-3dmatch-v0.05.pth"
         global DGR
         DGR = DeepGlobalRegistration(config)
-    down_voxel_size = 0.05
     source_down = copy.deepcopy(source)
     target_down = copy.deepcopy(target)
-    source_down.voxel_down_sample(down_voxel_size)
-    target_down.voxel_down_sample(down_voxel_size)
-    source_down.estimate_normals(o3d.geometry.KDTreeSearchParamHybrid(radius=down_voxel_size*2, max_nn=30))
-    target_down.estimate_normals(o3d.geometry.KDTreeSearchParamHybrid(radius=down_voxel_size*2, max_nn=30))
+    source_down.voxel_down_sample(DOWN_SAMPLE_VOXEL_SIZE)
+    target_down.voxel_down_sample(DOWN_SAMPLE_VOXEL_SIZE)
+    source_down.estimate_normals(o3d.geometry.KDTreeSearchParamHybrid(radius=DOWN_SAMPLE_VOXEL_SIZE*2, max_nn=30))
+    target_down.estimate_normals(o3d.geometry.KDTreeSearchParamHybrid(radius=DOWN_SAMPLE_VOXEL_SIZE*2, max_nn=30))
 
+    uncertain = False
     transformation_dgr, useSafeGuard = DGR.register(source_down, target_down)
-    overlap_ratio = compute_overlap_ratio(source_down, target_down, transformation_dgr, down_voxel_size)
+    dgr_overlap_ratio = compute_overlap_ratio(source_down, target_down, transformation_dgr, BASIC_VOXEL_SIZE)
     # print(overlap_ratio)
-    
-    if overlap_ratio < 0.3:
-        transformation_dgr = overlap_predator(source_down, target_down)
-        overlap_ratio = compute_overlap_ratio(source_down, target_down, transformation_dgr, down_voxel_size)
-        print("fix to:",overlap_ratio)
-    if overlap_ratio < 0.3:
-        transformation_dgr = ransac_global_registration(source_down, target_down, down_voxel_size)
-        overlap_ratio = compute_overlap_ratio(source_down, target_down, transformation_dgr, down_voxel_size)
-        print("fix to:",overlap_ratio)
-        # input()
+    if False:
+    # if dgr_overlap_ratio < 0.3:
+        transformation_overlap = overlap_predator(source_down, target_down)
+        op_overlap_ratio = compute_overlap_ratio(source_down, target_down, transformation_overlap, BASIC_VOXEL_SIZE)
+        # print("fix to:",overlap_ratio)
 
-    source_down.transform(transformation_dgr)
+        transformation_ransac = ransac_global_registration(source_down, target_down, DOWN_SAMPLE_VOXEL_SIZE)
+        ransac_overlap_ratio = compute_overlap_ratio(source_down, target_down, transformation_ransac, BASIC_VOXEL_SIZE)
+        # print("fix to:",overlap_ratio)
+        # input()
+        chooseT = 0
+        if dgr_overlap_ratio >= op_overlap_ratio and dgr_overlap_ratio >= ransac_overlap_ratio:
+            transformation = transformation_dgr
+        elif op_overlap_ratio >= dgr_overlap_ratio and op_overlap_ratio >= ransac_overlap_ratio:
+            transformation = transformation_overlap
+            chooseT = 1
+        else:
+            transformation = transformation_ransac
+            chooseT = 2
+        print("=> DGR Overlap ratio:{} too small, fix to {}\n//overlap predator:{}\n//ransac:{}".format(
+            dgr_overlap_ratio, ["DGR","PREDATOR","RANSAC"][chooseT], op_overlap_ratio, ransac_overlap_ratio))
+    else:
+        transformation = transformation_dgr
+        
+    if dgr_overlap_ratio < 0.3:
+        uncertain = True
+    source_down.transform(transformation)
     
-    transformation_icp = colored_icp_registration(source_down, target_down, down_voxel_size)
+    transformation_icp = colored_icp_registration(source_down, target_down, DOWN_SAMPLE_VOXEL_SIZE)
     
-    transformation = transformation_dgr @ transformation_icp
+    transformation = transformation @ transformation_icp
     information = o3d.pipelines.registration.get_information_matrix_from_point_clouds(
         source_down, target_down, max_correspondence_distance_fine,
         transformation)
-    # source_down.transform(transformation)
-    # o3d.visualization.draw_geometries([source_down, target_down])
-    return transformation, information, useSafeGuard
+
+    return transformation, information, uncertain
 
 ####################################################################
 # Integrate Fragments
@@ -295,7 +313,7 @@ def make_fragments(sid, eid, color_files, depth_files, intrinsic="", tsdf_cubic_
         intrinsic = o3d.camera.PinholeCameraIntrinsic(
             o3d.camera.PinholeCameraIntrinsicParameters.PrimeSenseDefault)
     
-    pcds = load_point_clouds(sid, eid, color_files, depth_files)
+    pcds = load_point_clouds(sid, eid, color_files, depth_files, voxel_size=BASIC_VOXEL_SIZE)
     
     pose_graph = o3d.pipelines.registration.PoseGraph()
     
@@ -338,16 +356,22 @@ def make_fragments(sid, eid, color_files, depth_files, intrinsic="", tsdf_cubic_
 
 n_fragments = len(groups)
 print("==> Make Fragments to point cloud")
-if False:
-    from joblib import Parallel, delayed
-    import multiprocessing
-    import subprocess
-    MAX_THREAD = min(multiprocessing.cpu_count()-1, n_fragments)
-    Parallel(n_jobs=MAX_THREAD)(delayed(make_fragments)(sid, eid, image_names, depth_names) for [sid, eid] in groups)
-else:
-    for [sid, eid] in tqdm(groups, desc="make fragments"):
-        make_fragments(sid, eid, image_names, depth_names)
-        # step value according to extend ratio, e.g. length 50, extend 5 => 10 frames overlap => step < 10 is prefered
+# if False:
+#     from joblib import Parallel, delayed
+#     import multiprocessing
+#     import subprocess
+#     if 'DGR' not in globals():
+#         config = get_config()
+# 		# best_val_checkpoint.pth  ResUNetBN2C-feat32-3dmatch-v0.05.pth   ResUNetBN2C-feat32-kitti-v0.3.pth
+#         config.weights = "deep_global_registration/pth/ResUNetBN2C-feat32-3dmatch-v0.05.pth"
+#         global DGR
+#         DGR = DeepGlobalRegistration(config)
+#     MAX_THREAD = min(multiprocessing.cpu_count()-1, n_fragments)
+#     Parallel(n_jobs=MAX_THREAD)(delayed(make_fragments)(sid, eid, image_names, depth_names) for [sid, eid] in groups)
+# else:
+#     for [sid, eid] in tqdm(groups, desc="make fragments"):
+#         make_fragments(sid, eid, image_names, depth_names)
+#         # step value according to extend ratio, e.g. length 50, extend 5 => 10 frames overlap => step < 10 is prefered
 
 ####################################################################
 # Pose Alignment by overlap frames
@@ -382,31 +406,22 @@ def rigid_transform_3D(A, B):
     T = np.r_[T, [[0, 0, 0, 1]]]
     return T
 
-# 0:7     4:10
-# 7       6
-#        [4]
-# 0 1 2 3 4 5 6
-#         4 5 6 7 8 9
-#        [0]
-
 def get_transformation_from_correspondence_fragment(
-    base_graph, trans_graph, n_per_fragment, extend_ratio):
-    print("=> get transformation from correspondence fragment")
-    print(len(base_graph),len(trans_graph))
-    base_pos = []; trans_pos = []
-    loop_range = n_per_fragment//extend_ratio
-    base_len = len(base_graph.nodes)
-    for idx in range(loop_range):
-        base_trans = base_graph.nodes[base_len-loop_range+idx].pose
-        trans_trans = trans_graph.nodes[idx].pose
-        _, _, _, rx, ry, rz = transformation2AnglePos(base_trans)
-        base_pos.append([rx, ry, rz ])
-        _, _, _, rx, ry, rz = transformation2AnglePos(trans_trans)
-        trans_pos.append([rx, ry, rz ])
-    print(base_pos, trans_pos)
-    T_rigid = rigid_transform_3D(np.array(trans_pos), np.array(base_pos))
-    print("%.5f %.5f %.5f %.5f %.5f %.5f " % transformation2AnglePos(T_rigid))
-    T_ori = base_graph.nodes[base_len-n_per_fragment//extend_ratio].pose
+    base_graph, trans_graph, base_range, trans_range):
+    
+    # base_pos = []; trans_pos = []
+    # for idx in range(trans_range[0],base_range[1]):
+    #     base_trans = base_graph.nodes[idx-base_range[0]].pose
+    #     trans_trans = trans_graph.nodes[idx-trans_range[0]].pose
+    #     _, _, _, rx, ry, rz = transformation2AnglePos(base_trans)
+    #     base_pos.append([rx, ry, rz ])
+    #     _, _, _, rx, ry, rz = transformation2AnglePos(trans_trans)
+    #     trans_pos.append([rx, ry, rz ])
+    # # print(base_pos, trans_pos)
+    # T_rigid = rigid_transform_3D(np.array(base_pos), np.array(trans_pos), )
+    # print("%.5f %.5f %.5f %.5f %.5f %.5f " % transformation2AnglePos(T_rigid))
+    
+    T_ori = base_graph.nodes[trans_range[0]-base_range[0]].pose
     return T_ori
 
 #===================================================================
@@ -416,7 +431,7 @@ print("=> Loading pose graphs...")
 pose_graph_files = sorted(glob.glob('outputs/posegraph/fragment_*.json'))
 graphs = [o3d.io.read_pose_graph(graph) for graph in pose_graph_files]
 print("=> Loading fragments...")
-pcds = read_point_clouds("outputs/",0.01)
+pcds = read_point_clouds("outputs/",BASIC_VOXEL_SIZE)
 assert len(graphs) == len(pcds)
 
 pcds_align = []
@@ -424,115 +439,94 @@ T_global = np.identity(4)
 for fragment_idx in tqdm(range(0, n_fragments), desc="Load fragment"):
     # get transformation with next fragment
     if fragment_idx != 0:
-        T_trans = get_transformation_from_correspondence_fragment(
+        T_local = get_transformation_from_correspondence_fragment(
             graphs[fragment_idx-1], graphs[fragment_idx],
-            N_PER_FRAGMENT, EXTEND_RATIO, SKIP_STEP)
+            groups[fragment_idx-1], groups[fragment_idx])
         pcd_base = copy.deepcopy(pcds[fragment_idx-1])
         pcd_trans = copy.deepcopy(pcds[fragment_idx])
     else:
-        T_trans = np.identity(4)
+        T_local = np.identity(4)
         pcd_base = copy.deepcopy(pcds[fragment_idx])
-        pcd_trans = copy.deepcopy(pcds[fragment_idx])
-    print("T local:\n",T_trans)
+        pcds_align.append(pcd_base)
+        continue
+    print("T local:\n",T_local)
     print("T global:\n",T_global)
-    T_global = T_global @ np.linalg.inv(T_trans)
+    T_global = T_global @ np.linalg.inv(T_local)
     
-    # tf_pcd.transform(T_global)
     pcd_trans.transform(T_global)
     pcds_align.append(pcd_trans)
-    o3d.visualization.draw_geometries(pcds_align)
-merged_pcd = merge_pcds(pcds_align)
-# o3d.io.write_point_cloud("outputs/fragments/MAIN.ply", merged_pcd, False, True)
-o3d.visualization.draw_geometries([merged_pcd])
-
-
-input()
+pcds = copy.deepcopy(pcds_align)
+del pcds_align, graphs
+# o3d.visualization.draw_geometries(pcds)
 
 ####################################################################
 # DFS registration 
 ####################################################################
 
-
 def pcd_fusion_dfs(_pcd_list, depth):
-	n_pcds = len(_pcd_list)
-	# return single pcd
-	if n_pcds < 2:
-		# print("="*50)
-		print("  |"*(depth-1)+"---> Single Point Cloud [Returned]")
-		# print("="*50)
-		return _pcd_list[0]
-	if n_pcds > 4:
-		# get half of merged pcds
-		left_pcd = pcd_fusion_dfs(_pcd_list[:n_pcds//2+1], depth+1)
-		right_pcd = pcd_fusion_dfs(_pcd_list[n_pcds//2+1:], depth+1)
-	else:
-		# get half of merged pcds
-		left_pcd = pcd_fusion_dfs(_pcd_list[:n_pcds//2], depth+1)
-		right_pcd = pcd_fusion_dfs(_pcd_list[n_pcds//2:], depth+1)
-	print("  |"*(depth-1)+"---> Registration..")
+    n_pcds = len(_pcd_list)
+    # return single pcd
+    if n_pcds < 2:
+        # print("="*50)
+        print("  |"*(depth-1)+"---> Single Point Cloud [Returned]")
+        # print("="*50)
+        return _pcd_list[0]
+    if n_pcds > 4:
+        # get half of merged pcds
+        left_pcd = pcd_fusion_dfs(_pcd_list[:n_pcds//2+1], depth+1)
+        right_pcd = pcd_fusion_dfs(_pcd_list[n_pcds//2+1:], depth+1)
+    else:
+        # get half of merged pcds
+        left_pcd = pcd_fusion_dfs(_pcd_list[:n_pcds//2], depth+1)
+        right_pcd = pcd_fusion_dfs(_pcd_list[n_pcds//2:], depth+1)
+    print("  |"*(depth-1)+"---> Registration..")
 
-	T, _, _ = global_registration(left_pcd, right_pcd)
-	left_pcd.transform(T)
-	print("  |"*(depth-1)+"---> Merge pcds")
-	merged_pcd = merge_pcds([left_pcd,right_pcd])
-	# storage temp
-	timestamp = int(round(time() * 1000))
-	o3d.io.write_point_cloud("./outputs/dfs/D{:0>3}_L{:0>3}_{}.ply".format(depth, n_pcds, timestamp), merged_pcd)
-	# o3d.visualization.draw_geometries([merged_pcd])
+    T, _, _ = global_registration(left_pcd, right_pcd)
+    left_pcd.transform(T)
+    print("  |"*(depth-1)+"---> Merge pcds")
+    merged_pcd = merge_pcds([left_pcd,right_pcd])
+    merged_pcd.voxel_down_sample(BASIC_VOXEL_SIZE)
+    merged_pcd.estimate_normals()
+    # storage temp
+    timestamp = int(round(time() * 1000))
+    o3d.io.write_point_cloud("./outputs/dfs/D{:0>3}_L{:0>3}_{}.ply".format(depth, n_pcds, timestamp), merged_pcd)
+    # o3d.visualization.draw_geometries([merged_pcd])
 
-	# print("="*50)
-	print("  |"*(depth-1)+"---> List length: {} Stack Depth: {} [Merged Complete]".format(n_pcds, depth))
-	# print("="*50)
-	return merged_pcd
+    # print("="*50)
+    print("  |"*(depth-1)+"---> List length: {} Stack Depth: {} [Merged Complete]".format(n_pcds, depth))
+    # print("="*50)
+    return merged_pcd
 
 #===================================================================
 # Main proc
 #===================================================================
-os.system("rm -rf outputs/dfs/")
-os.system("mkdir outputs/dfs/")
-start_time = time()
-pcd_dfs =  pcd_fusion_dfs(pcds, 1)
-end_time = time()
-time_cost = end_time-start_time
-print("\n## Total cost {}s = {}m{}s.".format(
-    time_cost, int((time_cost)//60), int(time_cost - (time_cost)//60*60)))
 
-o3d.io.write_point_cloud("./outputs/dfs/DFS-outputs.ply", pcd_dfs)
-o3d.visualization.draw_geometries([pcd_dfs])
+def method_DFS():
+    os.system("rm -rf outputs/dfs/")
+    os.system("mkdir outputs/dfs/")
+    start_time = time()
+    pcd_dfs =  pcd_fusion_dfs(pcds, 1)
+    end_time = time()
+    time_cost = end_time-start_time
+    print("\n## Total cost {}s = {}m{}s.".format(
+        time_cost, int((time_cost)//60), int(time_cost - (time_cost)//60*60)))
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    o3d.io.write_point_cloud("./outputs/dfs/DFS-outputs.ply", pcd_dfs)
+    o3d.visualization.draw_geometries([pcd_dfs])
 
 
 ####################################################################
-# Full registration 
+# Multiway registration 
 ####################################################################
-
 
 def full_registration(pcds,max_correspondence_distance):
     pose_graph = o3d.pipelines.registration.PoseGraph()
     odometry = np.identity(4)
     pose_graph.nodes.append(o3d.pipelines.registration.PoseGraphNode(odometry))
     n_pcds = len(pcds)
-
     for source_id in tqdm(range(n_pcds), desc="FULL REG"):
-        for target_id in tqdm(range(source_id + 1,min(source_id + 2, n_pcds)), desc="FRAME"):
-            transformation_icp, information_icp, _ = global_registration(
+        for target_id in tqdm(range(source_id + 1,min(source_id + 3, n_pcds)), desc="FRAME"):
+            transformation_icp, information_icp, uncertain = global_registration(
                 pcds[source_id], pcds[target_id],
                 max_correspondence_distance)
             # print("Build o3d.pipelines.registration.PoseGraph")
@@ -553,52 +547,52 @@ def full_registration(pcds,max_correspondence_distance):
                                                             target_id,
                                                             transformation_icp,
                                                             information_icp,
-                                                            uncertain=True))
-            for target_id in tqdm(range(source_id+3,n_pcds,7), desc="FRAME"):
-                transformation_icp, information_icp, _ = global_registration(
-                    pcds[source_id], pcds[target_id],max_correspondence_distance)
-                pose_graph.edges.append(
-                    o3d.pipelines.registration.PoseGraphEdge(source_id,
-                                                            target_id,
-                                                            transformation_icp,
-                                                            information_icp,
-                                                            uncertain=True))
-
+                                                            uncertain=uncertain))
+        for target_id in tqdm(range(source_id+4,n_pcds,3), desc="FRAME"): # random pick other fragments
+            transformation_icp, information_icp, uncertain = global_registration(
+                pcds[source_id], pcds[target_id],max_correspondence_distance)
+            pose_graph.edges.append(
+                o3d.pipelines.registration.PoseGraphEdge(source_id,
+                                                        target_id,
+                                                        transformation_icp,
+                                                        information_icp,
+                                                        uncertain=True))
     return pose_graph
 
 #===================================================================
 # Main proc
 #===================================================================
 
-voxel_size = 0.02
+def method_multiway():
+    print("=> Full registration ...")
+    max_correspondence_distance = BASIC_VOXEL_SIZE * 1.5
+    pose_graph = full_registration(pcds,max_correspondence_distance)
 
-pcds = read_point_clouds()
-o3d.visualization.draw(pcds)
+    print("=> Optimizing PoseGraph ...")
+    option = o3d.pipelines.registration.GlobalOptimizationOption(
+        max_correspondence_distance=max_correspondence_distance,
+        edge_prune_threshold=0.25,
+        reference_node=0)
+    o3d.pipelines.registration.global_optimization(
+        pose_graph,
+        o3d.pipelines.registration.GlobalOptimizationLevenbergMarquardt(),
+        o3d.pipelines.registration.GlobalOptimizationConvergenceCriteria(),
+        option)
+    print("=> Transform points and display")
+    for point_id in tqdm(range(len(pcds)), desc="MERGE"):
+        print(pose_graph.nodes[point_id].pose)
+        pcds[point_id].transform(pose_graph.nodes[point_id].pose)
+        
+    pcd = merge_pcds(pcds)
+    pcd_name = "outputs/multi_dgr.ply"
+    o3d.io.write_point_cloud(pcd_name, pcd, False, True)
+    o3d.visualization.draw(pcds)
 
-print("=> Full registration ...")
-max_correspondence_distance = voxel_size * 1.5
-pose_graph = full_registration(pcds,max_correspondence_distance)
+METHOD = "multiway"
 
-print("=> Optimizing PoseGraph ...")
-option = o3d.pipelines.registration.GlobalOptimizationOption(
-    max_correspondence_distance=max_correspondence_distance,
-    edge_prune_threshold=0.25,
-    reference_node=0)
-o3d.pipelines.registration.global_optimization(
-    pose_graph,
-    o3d.pipelines.registration.GlobalOptimizationLevenbergMarquardt(),
-    o3d.pipelines.registration.GlobalOptimizationConvergenceCriteria(),
-    option)
-print("=> Transform points and display")
-for point_id in tqdm(range(len(pcds)), desc="MERGE"):
-    print(pose_graph.nodes[point_id].pose)
-    pcds[point_id].transform(pose_graph.nodes[point_id].pose)
-    
-pcd = merge_pcds(pcds)
-pcd_name = "outputs/multi_dgr.ply"
-o3d.io.write_point_cloud(pcd_name, pcd, False, True)
-o3d.visualization.draw(pcds)
-
-
+if METHOD == "multiway":
+    method_multiway()
+if METHOD == "dfs":
+    method_DFS()
 
 

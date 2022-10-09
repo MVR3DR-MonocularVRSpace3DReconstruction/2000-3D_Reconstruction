@@ -65,7 +65,7 @@ def read_point_clouds(data_dir = "./data/redwood-livingroom/",down_sample=0.1):
         temp_pcd = o3d.io.read_point_cloud(pcd)
         temp_pcd = temp_pcd.voxel_down_sample(down_sample)
         temp_pcd.estimate_normals()
-        temp_pcd.transform([[1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1]])
+        # temp_pcd.transform([[1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1]])
         pcds.append(temp_pcd)
     return pcds
 

@@ -239,16 +239,19 @@ def pcd_integrate_dfs(pcd_range, pcd_list, depth):
     print("  |"*(depth-1)+"---> Registration..")
     # o3d.visualization.draw_geometries([left_pcd, right_pcd])
     T, _, _ = global_registration(left_pcd, right_pcd)
-    left_trans = [trans @ T for trans in left_trans]
+    left_trans = [T @ trans for trans in left_trans]
+    # left_pcd.transform(T)
+    # o3d.visualization.draw_geometries([right_pcd, left_pcd])
+    
     print("  |"*(depth-1)+"---> Merge pcds")
     merged_pcd = integrate_pcd(left_range, right_range, left_trans, right_trans)
     merged_pcd.voxel_down_sample(BASIC_VOXEL_SIZE)
     merged_pcd.estimate_normals()
     
     # storage temp
-    time_cost = time()-start_time
-    timestamp = "{}m{}s".format(int((time_cost)//60), int(time_cost - (time_cost)//60*60))
-    o3d.io.write_point_cloud("./outputs/dfs_integrate/D{:0>3}_L{:0>3}_{}.ply".format(depth, n_pcds, timestamp), merged_pcd)
+    # time_cost = time()-start_time
+    # timestamp = "{}m{}s".format(int((time_cost)//60), int(time_cost - (time_cost)//60*60))
+    o3d.io.write_point_cloud("./outputs/dfs_integrate/D{:0>3}_L{:0>3}_[{:0>3}-{:0>3}].ply".format(depth, n_pcds, *pcd_range), merged_pcd)
     # o3d.visualization.draw_geometries([merged_pcd])
 
     print("  |"*(depth-1)+"---> List length: {} Stack Depth: {} [Merged Complete]".format(n_pcds, depth))

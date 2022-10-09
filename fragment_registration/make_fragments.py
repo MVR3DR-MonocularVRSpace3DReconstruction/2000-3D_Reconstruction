@@ -179,7 +179,7 @@ def process_single_fragment(fragment_id, color_files, depth_files, n_files,
 
 
 def run(config):
-    data_dir = "./data/redwood-bedroom/"
+    # data_dir = "./data/redwood-bedroom/"
     print("making fragments from RGBD sequence.")
     make_clean_folder(join(config["path_dataset"], config["folder_fragment"]))
 

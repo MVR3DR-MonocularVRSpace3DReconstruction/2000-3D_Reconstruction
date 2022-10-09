@@ -27,6 +27,7 @@
 import numpy as np
 import open3d as o3d
 import os, sys
+import copy
 
 pyexample_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(pyexample_path)
@@ -36,6 +37,34 @@ from fragment_registration.open3d_utils import join, get_file_list, make_clean_f
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from fragment_registration.optimize_posegraph import optimize_posegraph_for_scene
 from fragment_registration.refine_registration import multiscale_icp
+
+from deep_global_registration.core.deep_global_registration import DeepGlobalRegistration
+from deep_global_registration.config import get_config
+
+def get_matching_indices(source, target, trans, search_voxel_size, K=None):
+    source_copy = copy.deepcopy(source)
+    target_copy = copy.deepcopy(target)
+    source_copy.transform(trans)
+    pcd_tree = o3d.geometry.KDTreeFlann(target_copy)
+
+    match_inds = []
+    for i, point in enumerate(source_copy.points):
+        [_, idx, _] = pcd_tree.search_radius_vector_3d(point, search_voxel_size)
+        if K is not None:
+            idx = idx[:K]
+        for j in idx:
+            match_inds.append((i, j))
+    return match_inds
+
+def compute_overlap_ratio(pcd0, pcd1, trans, voxel_size):
+    pcd0_down = pcd0.voxel_down_sample(voxel_size)
+    pcd1_down = pcd1.voxel_down_sample(voxel_size)
+    matching01 = get_matching_indices(pcd0_down, pcd1_down, trans, voxel_size, 1)
+    matching10 = get_matching_indices(pcd1_down, pcd0_down, np.linalg.inv(trans),
+                                    voxel_size, 1)
+    overlap0 = len(matching01) / len(pcd0_down.points)
+    overlap1 = len(matching10) / len(pcd1_down.points)
+    return max(overlap0, overlap1)
 
 
 def preprocess_point_cloud(pcd, config):
@@ -52,8 +81,20 @@ def preprocess_point_cloud(pcd, config):
 
 
 def register_point_cloud_fpfh(source, target, source_fpfh, target_fpfh, config):
-    o3d.utility.set_verbosity_level(o3d.utility.VerbosityLevel.Debug)
+    # o3d.utility.set_verbosity_level(o3d.utility.VerbosityLevel.Debug)
     distance_threshold = config["voxel_size"] * 1.4
+    if config["global_registration"] == "dgr":
+        
+        transformation, _ = DGR.register(source, target)
+        
+        overlap_ratio = compute_overlap_ratio(source, target, transformation, config["voxel_size"])
+        information = o3d.pipelines.registration.get_information_matrix_from_point_clouds(
+                source, target, distance_threshold, transformation)
+        if overlap_ratio < 0.3:
+            success = False
+        else:
+            success = True
+        return (success, transformation, information)
     if config["global_registration"] == "fgr":
         result = o3d.pipelines.registration.registration_fgr_based_on_feature_matching(
             source, target, source_fpfh, target_fpfh,
@@ -175,12 +216,17 @@ def make_posegraph_for_scene(ply_file_names, config):
         for t in range(s + 1, n_files):
             matching_results[s * n_files + t] = matching_result(s, t)
 
-    if config["python_multi_threading"] == True:
+    if config["global_registration"] == "dgr" and 'DGR' not in globals():
+        dgr_config = get_config()
+        dgr_config.weights = "deep_global_registration/pth/ResUNetBN2C-feat32-3dmatch-v0.05.pth"
+        global DGR 
+        DGR = DeepGlobalRegistration(dgr_config)
+
+    if config["python_multi_threading_reg"] == True:
         from joblib import Parallel, delayed
         import multiprocessing
         import subprocess
-        MAX_THREAD = min(multiprocessing.cpu_count(),
-                         max(len(matching_results), 1))
+        MAX_THREAD = min(multiprocessing.cpu_count(), max(len(matching_results), 1))
         results = Parallel(n_jobs=MAX_THREAD)(delayed(
             register_point_cloud_pair)(ply_file_names, matching_results[r].s,
                                        matching_results[r].t, config)
@@ -206,12 +252,10 @@ def make_posegraph_for_scene(ply_file_names, config):
         join(config["path_dataset"], config["template_global_posegraph"]),
         pose_graph)
 
-
 def run(config):
     print("register fragments.")
     # o3d.utility.set_verbosity_level(o3d.utility.VerbosityLevel.Debug)
-    ply_file_names = get_file_list(
-        join(config["path_dataset"], config["folder_fragment"]), ".ply")
+    ply_file_names = get_file_list(join(config["path_dataset"], config["folder_fragment"]), ".ply")
     make_clean_folder(join(config["path_dataset"], config["folder_scene"]))
     make_posegraph_for_scene(ply_file_names, config)
     optimize_posegraph_for_scene(config["path_dataset"], config)

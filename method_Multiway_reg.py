@@ -228,7 +228,6 @@ pause_time = time() - pause_time
 
 print("\n\n# Full registration ...")
 correspondence_distance = voxel_size * 1.5 # 1.5
-# with o3d.utility.VerbosityContextManager(o3d.utility.VerbosityLevel.Debug) as cm:
 pose_graph = full_registration(pcds_down, 0.1) # 15/len(pcds_down)                     
 ########
 
@@ -239,14 +238,12 @@ option = o3d.pipelines.registration.GlobalOptimizationOption(
     reference_node=0,# len(pcds_down)//2
     preference_loop_closure=2.0)
 
-
-with o3d.utility.VerbosityContextManager(o3d.utility.VerbosityLevel.Debug) as cm:
-    o3d.pipelines.registration.global_optimization(
-        pose_graph,
-        # o3d.pipelines.registration.GlobalOptimizationLevenbergMarquardt(),
-        o3d.pipelines.registration.GlobalOptimizationGaussNewton(),
-        o3d.pipelines.registration.GlobalOptimizationConvergenceCriteria(),
-        option)
+o3d.pipelines.registration.global_optimization(
+    pose_graph,
+    # o3d.pipelines.registration.GlobalOptimizationLevenbergMarquardt(),
+    o3d.pipelines.registration.GlobalOptimizationGaussNewton(),
+    o3d.pipelines.registration.GlobalOptimizationConvergenceCriteria(),
+    option)
 ########
 
 print("\n\n# Pose graph length: ",pose_graph)

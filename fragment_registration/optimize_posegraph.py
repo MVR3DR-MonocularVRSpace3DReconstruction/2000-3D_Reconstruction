@@ -34,7 +34,7 @@ def run_posegraph_optimization(pose_graph_name, pose_graph_optimized_name,
                                max_correspondence_distance,
                                preference_loop_closure):
     # to display messages from o3d.pipelines.registration.global_optimization
-    o3d.utility.set_verbosity_level(o3d.utility.VerbosityLevel.Debug)
+    # o3d.utility.set_verbosity_level(o3d.utility.VerbosityLevel.Debug)
     method = o3d.pipelines.registration.GlobalOptimizationLevenbergMarquardt()
     criteria = o3d.pipelines.registration.GlobalOptimizationConvergenceCriteria(
     )

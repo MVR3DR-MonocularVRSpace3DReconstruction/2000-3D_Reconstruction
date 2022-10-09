@@ -1,41 +1,9 @@
-# ----------------------------------------------------------------------------
-# -                        Open3D: www.open3d.org                            -
-# ----------------------------------------------------------------------------
-# The MIT License (MIT)
-#
-# Copyright (c) 2018-2021 www.open3d.org
-#
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-#
-# The above copyright notice and this permission notice shall be included in
-# all copies or substantial portions of the Software.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-# FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
-# IN THE SOFTWARE.
-# ----------------------------------------------------------------------------
-
-# examples/python/reconstruction_system/integrate_scene.py
-
-import numpy as np
 import math
 import os, sys
 import open3d as o3d
-
-pyexample_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(pyexample_path)
+import numpy as np
 
 from fragment_registration.open3d_utils import *
-
 
 def scalable_integrate_rgb_frames(path_dataset, intrinsic, config):
     poses = []
@@ -44,8 +12,7 @@ def scalable_integrate_rgb_frames(path_dataset, intrinsic, config):
     depth_files = [depth_files[idx] for idx in range(0, len(depth_files), config["n_files_per_step"])]
     
     n_files = len(color_files)
-    n_fragments = int(math.ceil(float(n_files) / \
-            config['n_frames_per_fragment']))
+    n_fragments = int(math.ceil(float(n_files) / config['n_frames_per_fragment']))
     volume = o3d.pipelines.integration.ScalableTSDFVolume(
         voxel_length=config["tsdf_cubic_size"] / 512.0,
         sdf_trunc=0.04,
@@ -60,10 +27,9 @@ def scalable_integrate_rgb_frames(path_dataset, intrinsic, config):
                  config["template_fragment_posegraph_optimized"] % fragment_id))
 
         for frame_id in range(0, len(pose_graph_rgbd.nodes)):
-            frame_id_abs = fragment_id * \
-                    config['n_frames_per_fragment'] + frame_id
+            frame_id_abs = fragment_id * config['n_frames_per_fragment'] + frame_id
             print(
-                "Fragment %03d / %03d :: integrate rgbd frame %d (%d of %d)." %
+                "=> Fragment %03d / %03d :: integrate rgbd frame %d (%d of %d)." %
                 (fragment_id, n_fragments - 1, frame_id_abs, frame_id + 1,
                  len(pose_graph_rgbd.nodes)))
             rgbd = read_rgbd_image(color_files[frame_id_abs],
@@ -86,7 +52,7 @@ def scalable_integrate_rgb_frames(path_dataset, intrinsic, config):
 
 
 def run(config):
-    print("integrate the whole RGBD sequence using estimated camera pose.")
+    print("=> Integrate the whole RGBD sequence using estimated camera pose.")
     if config["path_intrinsic"]:
         intrinsic = o3d.io.read_pinhole_camera_intrinsic(
             config["path_intrinsic"])

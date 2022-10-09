@@ -1,45 +1,17 @@
-# ----------------------------------------------------------------------------
-# -                        Open3D: www.open3d.org                            -
-# ----------------------------------------------------------------------------
-# The MIT License (MIT)
-#
-# Copyright (c) 2018-2021 www.open3d.org
-#
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-#
-# The above copyright notice and this permission notice shall be included in
-# all copies or substantial portions of the Software.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-# FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
-# IN THE SOFTWARE.
-# ----------------------------------------------------------------------------
 
+import os
+import sys
+import copy
 import numpy as np
 import open3d as o3d
-import os, sys
-import copy
 
-pyexample_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(pyexample_path)
+from deep_global_registration.config import get_config
+from deep_global_registration.core.deep_global_registration import DeepGlobalRegistration
+
+from fragment_registration.refine_registration import multiscale_icp
+from fragment_registration.optimize_posegraph import optimize_posegraph_for_scene
 
 from fragment_registration.open3d_utils import join, get_file_list, make_clean_folder, draw_registration_result
-
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from fragment_registration.optimize_posegraph import optimize_posegraph_for_scene
-from fragment_registration.refine_registration import multiscale_icp
-
-from deep_global_registration.core.deep_global_registration import DeepGlobalRegistration
-from deep_global_registration.config import get_config
 
 def get_matching_indices(source, target, trans, search_voxel_size, K=None):
     source_copy = copy.deepcopy(source)
@@ -49,7 +21,8 @@ def get_matching_indices(source, target, trans, search_voxel_size, K=None):
 
     match_inds = []
     for i, point in enumerate(source_copy.points):
-        [_, idx, _] = pcd_tree.search_radius_vector_3d(point, search_voxel_size)
+        [_, idx, _] = pcd_tree.search_radius_vector_3d(
+            point, search_voxel_size)
         if K is not None:
             idx = idx[:K]
         for j in idx:
@@ -59,13 +32,13 @@ def get_matching_indices(source, target, trans, search_voxel_size, K=None):
 def compute_overlap_ratio(pcd0, pcd1, trans, voxel_size):
     pcd0_down = pcd0.voxel_down_sample(voxel_size)
     pcd1_down = pcd1.voxel_down_sample(voxel_size)
-    matching01 = get_matching_indices(pcd0_down, pcd1_down, trans, voxel_size, 1)
+    matching01 = get_matching_indices(
+        pcd0_down, pcd1_down, trans, voxel_size, 1)
     matching10 = get_matching_indices(pcd1_down, pcd0_down, np.linalg.inv(trans),
-                                    voxel_size, 1)
+                                      voxel_size, 1)
     overlap0 = len(matching01) / len(pcd0_down.points)
     overlap1 = len(matching10) / len(pcd1_down.points)
     return max(overlap0, overlap1)
-
 
 def preprocess_point_cloud(pcd, config):
     voxel_size = config["voxel_size"]
@@ -79,17 +52,17 @@ def preprocess_point_cloud(pcd, config):
                                              max_nn=100))
     return (pcd_down, pcd_fpfh)
 
-
 def register_point_cloud_fpfh(source, target, source_fpfh, target_fpfh, config):
     # o3d.utility.set_verbosity_level(o3d.utility.VerbosityLevel.Debug)
     distance_threshold = config["voxel_size"] * 1.4
     if config["global_registration"] == "dgr":
-        
+
         transformation, _ = DGR.register(source, target)
-        
-        overlap_ratio = compute_overlap_ratio(source, target, transformation, config["voxel_size"])
+
+        overlap_ratio = compute_overlap_ratio(
+            source, target, transformation, config["voxel_size"])
         information = o3d.pipelines.registration.get_information_matrix_from_point_clouds(
-                source, target, distance_threshold, transformation)
+            source, target, distance_threshold, transformation)
         if overlap_ratio < 0.3:
             success = False
         else:
@@ -122,7 +95,6 @@ def register_point_cloud_fpfh(source, target, source_fpfh, target_fpfh, config):
         return (False, np.identity(4), np.zeros((6, 6)))
     return (True, result.transformation, information)
 
-
 def compute_initial_registration(s, t, source_down, target_down, source_fpfh,
                                  target_fpfh, path_dataset, config):
 
@@ -135,8 +107,8 @@ def compute_initial_registration(s, t, source_down, target_down, source_fpfh,
         transformation_init = np.linalg.inv(pose_graph_frag.nodes[n_nodes -
                                                                   1].pose)
         (transformation, information) = \
-                multiscale_icp(source_down, target_down,
-                [config["voxel_size"]], [50], config, transformation_init)
+            multiscale_icp(source_down, target_down,
+                           [config["voxel_size"]], [50], config, transformation_init)
     else:  # loop closure case
         (success, transformation,
          information) = register_point_cloud_fpfh(source_down, target_down,
@@ -151,29 +123,22 @@ def compute_initial_registration(s, t, source_down, target_down, source_fpfh,
         draw_registration_result(source_down, target_down, transformation)
     return (True, transformation, information)
 
-
-def update_posegraph_for_scene(s, t, transformation, information, odometry,
-                               pose_graph):
+def update_posegraph_for_scene(s, t, transformation, information, odometry, pose_graph):
     if t == s + 1:  # odometry case
         odometry = np.dot(transformation, odometry)
         odometry_inv = np.linalg.inv(odometry)
         pose_graph.nodes.append(
             o3d.pipelines.registration.PoseGraphNode(odometry_inv))
         pose_graph.edges.append(
-            o3d.pipelines.registration.PoseGraphEdge(s,
-                                                     t,
-                                                     transformation,
-                                                     information,
-                                                     uncertain=False))
+            o3d.pipelines.registration.PoseGraphEdge(
+                s, t, transformation,
+                information, uncertain=False))
     else:  # loop closure case
         pose_graph.edges.append(
-            o3d.pipelines.registration.PoseGraphEdge(s,
-                                                     t,
-                                                     transformation,
-                                                     information,
-                                                     uncertain=True))
+            o3d.pipelines.registration.PoseGraphEdge(
+                s, t, transformation,
+                information, uncertain=True))
     return (odometry, pose_graph)
-
 
 def register_point_cloud_pair(ply_file_names, s, t, config):
     print("reading %s ..." % ply_file_names[s])
@@ -183,9 +148,9 @@ def register_point_cloud_pair(ply_file_names, s, t, config):
     (source_down, source_fpfh) = preprocess_point_cloud(source, config)
     (target_down, target_fpfh) = preprocess_point_cloud(target, config)
     (success, transformation, information) = \
-            compute_initial_registration(
-            s, t, source_down, target_down,
-            source_fpfh, target_fpfh, config["path_dataset"], config)
+        compute_initial_registration(
+        s, t, source_down, target_down,
+        source_fpfh, target_fpfh, config["path_dataset"], config)
     if t != s + 1 and not success:
         return (False, np.identity(4), np.identity(6))
     if config["debug_mode"]:
@@ -193,17 +158,14 @@ def register_point_cloud_pair(ply_file_names, s, t, config):
         print(information)
     return (True, transformation, information)
 
-
-# other types instead of class?
 class matching_result:
-
+    
     def __init__(self, s, t):
         self.s = s
         self.t = t
         self.success = False
         self.transformation = np.identity(4)
         self.infomation = np.identity(6)
-
 
 def make_posegraph_for_scene(ply_file_names, config):
     pose_graph = o3d.pipelines.registration.PoseGraph()
@@ -219,18 +181,19 @@ def make_posegraph_for_scene(ply_file_names, config):
     if config["global_registration"] == "dgr" and 'DGR' not in globals():
         dgr_config = get_config()
         dgr_config.weights = "deep_global_registration/pth/ResUNetBN2C-feat32-3dmatch-v0.05.pth"
-        global DGR 
+        global DGR
         DGR = DeepGlobalRegistration(dgr_config)
 
     if config["python_multi_threading_reg"] == True:
         from joblib import Parallel, delayed
         import multiprocessing
         import subprocess
-        MAX_THREAD = min(multiprocessing.cpu_count(), max(len(matching_results), 1))
+        MAX_THREAD = min(multiprocessing.cpu_count(),
+                         max(len(matching_results), 1))
         results = Parallel(n_jobs=MAX_THREAD)(delayed(
             register_point_cloud_pair)(ply_file_names, matching_results[r].s,
                                        matching_results[r].t, config)
-                                              for r in matching_results)
+            for r in matching_results)
         for i, r in enumerate(matching_results):
             matching_results[r].success = results[i][0]
             matching_results[r].transformation = results[i][1]
@@ -238,9 +201,8 @@ def make_posegraph_for_scene(ply_file_names, config):
     else:
         for r in matching_results:
             (matching_results[r].success, matching_results[r].transformation,
-                    matching_results[r].information) = \
-                    register_point_cloud_pair(ply_file_names,
-                    matching_results[r].s, matching_results[r].t, config)
+             matching_results[r].information) = register_point_cloud_pair(
+                ply_file_names, matching_results[r].s, matching_results[r].t, config)
 
     for r in matching_results:
         if matching_results[r].success:
@@ -248,14 +210,11 @@ def make_posegraph_for_scene(ply_file_names, config):
                 matching_results[r].s, matching_results[r].t,
                 matching_results[r].transformation,
                 matching_results[r].information, odometry, pose_graph)
-    o3d.io.write_pose_graph(
-        join(config["path_dataset"], config["template_global_posegraph"]),
-        pose_graph)
+    o3d.io.write_pose_graph(config["path_dataset"]+config["template_global_posegraph"],pose_graph)
 
 def run(config):
     print("register fragments.")
-    # o3d.utility.set_verbosity_level(o3d.utility.VerbosityLevel.Debug)
-    ply_file_names = get_file_list(join(config["path_dataset"], config["folder_fragment"]), ".ply")
-    make_clean_folder(join(config["path_dataset"], config["folder_scene"]))
+    ply_file_names = get_file_list(config["path_dataset"]+config["folder_fragment"]+".ply")
+    make_clean_folder(config["path_dataset"]+config["folder_scene"])
     make_posegraph_for_scene(ply_file_names, config)
     optimize_posegraph_for_scene(config["path_dataset"], config)

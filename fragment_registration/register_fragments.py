@@ -56,23 +56,14 @@ def register_point_cloud_fpfh(source, target, source_fpfh, target_fpfh, config):
     # o3d.utility.set_verbosity_level(o3d.utility.VerbosityLevel.Debug)
     distance_threshold = config["voxel_size"] * 1.4
     if config["global_registration"] == "dgr":
-
         transformation, _ = DGR.register(source, target)
-
-        overlap_ratio = compute_overlap_ratio(
-            source, target, transformation, config["voxel_size"])
-        information = o3d.pipelines.registration.get_information_matrix_from_point_clouds(
-            source, target, distance_threshold, transformation)
-        if overlap_ratio < 0.3:
-            success = False
-        else:
-            success = True
-        return (success, transformation, information)
+        
     if config["global_registration"] == "fgr":
         result = o3d.pipelines.registration.registration_fgr_based_on_feature_matching(
             source, target, source_fpfh, target_fpfh,
             o3d.pipelines.registration.FastGlobalRegistrationOption(
                 maximum_correspondence_distance=distance_threshold))
+        transformation = result.transformation
     if config["global_registration"] == "ransac":
         # Fallback to preset parameters that works better
         result = o3d.pipelines.registration.registration_ransac_based_on_feature_matching(
@@ -87,13 +78,22 @@ def register_point_cloud_fpfh(source, target, source_fpfh, target_fpfh, config):
             ],
             o3d.pipelines.registration.RANSACConvergenceCriteria(
                 1000000, 0.999))
-    if (result.transformation.trace() == 4.0):
+        transformation = result.transformation
+        
+    if (transformation.trace() == 4.0):
         return (False, np.identity(4), np.zeros((6, 6)))
     information = o3d.pipelines.registration.get_information_matrix_from_point_clouds(
-        source, target, distance_threshold, result.transformation)
+        source, target, distance_threshold, transformation)
     if information[5, 5] / min(len(source.points), len(target.points)) < 0.3:
         return (False, np.identity(4), np.zeros((6, 6)))
-    return (True, result.transformation, information)
+    
+    if config["global_registration"] == "dgr":
+        overlap_ratio = compute_overlap_ratio(
+            source, target, transformation, config["voxel_size"])
+        if overlap_ratio < 0.3:
+            return (False, np.identity(4), np.zeros((6, 6)))
+        
+    return (True, transformation, information)
 
 def compute_initial_registration(s, t, source_down, target_down, source_fpfh,
                                  target_fpfh, path_dataset, config):
@@ -104,16 +104,13 @@ def compute_initial_registration(s, t, source_down, target_down, source_fpfh,
             join(path_dataset,
                  config["template_fragment_posegraph_optimized"] % s))
         n_nodes = len(pose_graph_frag.nodes)
-        transformation_init = np.linalg.inv(pose_graph_frag.nodes[n_nodes -
-                                                                  1].pose)
-        (transformation, information) = \
-            multiscale_icp(source_down, target_down,
-                           [config["voxel_size"]], [50], config, transformation_init)
+        transformation_init = np.linalg.inv(pose_graph_frag.nodes[n_nodes - 1].pose)
+        (transformation, information) = multiscale_icp(
+            source_down, target_down, [config["voxel_size"]], [50], config, transformation_init)
     else:  # loop closure case
         (success, transformation,
-         information) = register_point_cloud_fpfh(source_down, target_down,
-                                                  source_fpfh, target_fpfh,
-                                                  config)
+         information) = register_point_cloud_fpfh(
+             source_down, target_down, source_fpfh, target_fpfh, config)
         if not success:
             print("No reasonable solution. Skip this pair")
             return (False, np.identity(4), np.zeros((6, 6)))
@@ -175,9 +172,11 @@ def make_posegraph_for_scene(ply_file_names, config):
     n_files = len(ply_file_names)
     matching_results = {}
     for s in range(n_files):
-        for t in range(s + 1, n_files):
+        for t in range(s + 1, min(s + 5, n_files)):
             matching_results[s * n_files + t] = matching_result(s, t)
-
+        for t in range(min(s + 6, n_files), n_files, config["n_fragments_skip_compare"]):
+            matching_results[s * n_files + t] = matching_result(s, t)
+        
     if config["global_registration"] == "dgr" and 'DGR' not in globals():
         dgr_config = get_config()
         dgr_config.weights = "deep_global_registration/pth/ResUNetBN2C-feat32-3dmatch-v0.05.pth"
@@ -214,7 +213,7 @@ def make_posegraph_for_scene(ply_file_names, config):
 
 def run(config):
     print("register fragments.")
-    ply_file_names = get_file_list(config["path_dataset"]+config["folder_fragment"]+".ply")
+    ply_file_names = get_file_list(config["path_dataset"]+config["folder_fragment"],".ply")
     make_clean_folder(config["path_dataset"]+config["folder_scene"])
     make_posegraph_for_scene(ply_file_names, config)
     optimize_posegraph_for_scene(config["path_dataset"], config)

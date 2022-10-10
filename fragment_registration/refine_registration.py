@@ -167,7 +167,7 @@ def make_posegraph_for_refined_scene(ply_file_names, config):
 
 def run(config):
     print("=> Refine rough registration of fragments.")
-    ply_file_names = get_file_list(config["path_dataset"]+config["folder_fragment"]+".ply")
+    ply_file_names = get_file_list(config["path_dataset"]+config["folder_fragment"],".ply")
     make_posegraph_for_refined_scene(ply_file_names, config)
     optimize_posegraph_for_refined_scene(config["path_dataset"], config)
 

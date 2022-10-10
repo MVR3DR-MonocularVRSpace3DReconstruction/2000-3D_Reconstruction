@@ -22,7 +22,8 @@ DOWN_SAMPLE_VOXEL_SIZE = 0.05
 BASIC_VOXEL_SIZE = 0.02
 
 
-data_dir = "outputs/livingroom_S5_N50_E5/"
+# data_dir = "outputs/livingroom_S5_N50_E5/"
+data_dir = "data/redwood-boardroom"
 image_names = sorted(glob.glob(data_dir+'image/*.jpg'))
 depth_names = sorted(glob.glob(data_dir+'depth/*.png'))
 

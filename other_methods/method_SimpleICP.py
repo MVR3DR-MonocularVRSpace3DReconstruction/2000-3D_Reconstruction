@@ -5,12 +5,12 @@ import random
 from tqdm import tqdm
 import os
 import open3d as o3d
-from utils import generate_point_cloud, merge_pcds, color_icp_cpp, read_trajectory, read_point_clouds
+from utils import generate_point_cloud, load_point_clouds, merge_pcds, color_icp_cpp, read_trajectory, read_point_clouds
 from colored_icp import colored_icp
 
 
 # boardroom
-data_dir = "./data/redwood-livingroom/"
+data_dir = "./data/predict-livingroom/"
 POSE_FILE = "livingroom.log"
 COLOR_LIST = sorted(os.listdir(data_dir+'image/'))
 DEPTH_LIST = sorted(os.listdir(data_dir+'depth/'))
@@ -28,9 +28,9 @@ def simpleICP(pcd_base, pcd_trans):
     # pcd_trans.transform(T)
     return T
 
-PCD_LIST = read_point_clouds(data_dir = "./data/redwood-livingroom/",down_sample=0.5)
-print("=> PCD_LIST generated")
-
+PCD_LIST = load_point_clouds(data_dir = data_dir, step=50, down_sample=1)
+print("=> PCD_LIST generavted")
+o3d.visualization.draw_geometries([PCD_LIST[0]])	
 # count = 0
 merged_pcd = PCD_LIST[0]
 for pcd in PCD_LIST:

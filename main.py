@@ -29,7 +29,7 @@ if __name__ == "__main__":
     else:
         config['debug_mode'] = False
 
-    times = [0, 0, 0, 0]
+    times = [0, 0, 0, 0, 0, 0, 0]
 
     start_time = time.time()
     import fragment_registration.make_fragments
@@ -62,6 +62,7 @@ if __name__ == "__main__":
     import fragment_registration.integrate_scene
     fragment_registration.integrate_scene.run(config)
     times[3] = time.time() - start_time
+
     print("====================================")
     print("Integration Finish")
     print("====================================")

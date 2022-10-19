@@ -1,27 +1,28 @@
 {
-    "name": "Open3D fragment reconstruction",
+    "name": "Deep Global Registration & Open3d fragment registration",
 
-    "path_dataset": "data/redwood-lobby/",
+    "path_dataset": "data/redwood-boardroom/",
     "folder_fragment": "fragments/",
     "folder_scene": "scene/",
     "outputs_dir": "outputs/",
 
-    "template_fragment_pointcloud": "fragments/fragment_pcd_%03d.ply",
-    "template_fragment_posegraph": "fragments/fragment_posegraph_%03d.json",
-    "template_fragment_posegraph_optimized": "fragments/fragment_posegraph_opti_%03d.json",
+    "template_fragment_pointcloud": "fragments/fragment_%03d.ply",
+    "template_fragment_posegraph": "fragments/posegraph_%03d.json",
+    "template_fragment_posegraph_optimized": "fragments/posegraph_opti_%03d.json",
     
-    "template_global_posegraph": "scene/template_global_posegraph.json",
+    "template_global_posegraph": "scene/global_posegraph.json",
     "path_intrinsic": "",
 
+    "pair_register_method": "",
     "n_files_per_step": 1,
-    "n_fragments_skip_compare": 7,
+    "n_fragments_skip_matching": 1,
     "n_frames_per_fragment": 100,
 
-    "down_sample": 1,
     "template_global_traj": "scene/global_traj.log",
 
-    "template_refined_posegraph_optimized": "scene/template_refined_posegraph_optimized.json",
-    "template_global_mesh": "scene/output_pcd.ply",
+    "template_refined_posegraph_optimized": "scene/refined_posegraph_optimized.json",
+    "template_global_mesh": "scene/output_mesh.ply",
+    "template_global_pointcloud": "scene/output_pcd.ply",
 
     "depth_scale":1000,
     "depth_max": 1000,
@@ -31,8 +32,22 @@
     "preference_loop_closure_odometry": 0.1,
     "preference_loop_closure_registration": 5.0,
     "tsdf_cubic_size": 3.0,
-    "icp_method": "color",
+    "icp_method": "generalized",
     "global_registration": "dgr",
     "python_multi_threading": true,
-    "python_multi_threading_reg": false
+    "python_multi_threading_reg": true,
+
+    "loss_ratio": 0.005,
+
+    "max_iterations": 5,
+    "sdf_trunc": 0.04,
+    "block_count": 40000,
+    "distance_threshold": 0.07,
+    "fitness_threshold": 0.3,
+    "regularizer_weight": 1,
+    "method": "slac",
+    "device": "CPU:0",
+    "save_output_as": "pointcloud",
+    "folder_slac": "slac/",
+    "template_optimized_posegraph_slac": "optimized_posegraph_slac.json"
 }

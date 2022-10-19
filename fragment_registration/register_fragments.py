@@ -138,6 +138,13 @@ def update_posegraph_for_scene(s, t, transformation, information, odometry, pose
     return (odometry, pose_graph)
 
 def register_point_cloud_pair(ply_file_names, s, t, config):
+    
+    if config["global_registration"] == "dgr" and 'DGR' not in globals():
+        dgr_config = get_config()
+        dgr_config.weights = "deep_global_registration/pth/ResUNetBN2C-feat32-3dmatch-v0.05.pth"
+        global DGR
+        DGR = DeepGlobalRegistration(dgr_config)
+        
     print("reading %s ..." % ply_file_names[s])
     source = o3d.io.read_point_cloud(ply_file_names[s])
     print("reading %s ..." % ply_file_names[t])
@@ -174,14 +181,8 @@ def make_posegraph_for_scene(ply_file_names, config):
     for s in range(n_files):
         for t in range(s + 1, min(s + 5, n_files)):
             matching_results[s * n_files + t] = matching_result(s, t)
-        for t in range(min(s + 6, n_files), n_files, config["n_fragments_skip_compare"]):
+        for t in range(min(s + 6, n_files), n_files, config["n_fragments_skip_matching"]):
             matching_results[s * n_files + t] = matching_result(s, t)
-        
-    if config["global_registration"] == "dgr" and 'DGR' not in globals():
-        dgr_config = get_config()
-        dgr_config.weights = "deep_global_registration/pth/ResUNetBN2C-feat32-3dmatch-v0.05.pth"
-        global DGR
-        DGR = DeepGlobalRegistration(dgr_config)
 
     if config["python_multi_threading_reg"] == True:
         from joblib import Parallel, delayed

@@ -5,6 +5,11 @@ import glob
 import numpy as np
 from PIL import Image
 
+dep = Image.open("data/redwood-livingroom/depth/00000.png")
+print(np.array(dep))
+print(dep.getbands())
+input()
+
 data_dir = Path("data/classroom/")
 os.system("rm -rf {}".format(str(data_dir/"depth_out")))
 os.system("mkdir {}".format(str(data_dir/"depth_out")))

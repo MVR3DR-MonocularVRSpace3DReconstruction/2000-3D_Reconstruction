@@ -8,6 +8,9 @@ import open3d as o3d
 from fragment_registration.optimize_posegraph import optimize_posegraph_for_fragment
 from fragment_registration.open3d_utils import *
 
+from deep_global_registration.config import get_config
+from deep_global_registration.core.deep_global_registration import DeepGlobalRegistration
+
 # check opencv python package
 with_opencv = initialize_opencv()
 if with_opencv:
@@ -15,11 +18,22 @@ if with_opencv:
 
 def register_one_rgbd_pair(s, t, color_files, depth_files, intrinsic,
                            with_opencv, config):
-    source_rgbd_image = read_rgbd_image(color_files[s], depth_files[s], True,
-                                        config)
-    target_rgbd_image = read_rgbd_image(color_files[t], depth_files[t], True,
-                                        config)
+    source_rgbd_image = read_rgbd_image(color_files[s], depth_files[s], True, config)
+    target_rgbd_image = read_rgbd_image(color_files[t], depth_files[t], True, config)
 
+    if config["pair_register_method"] == 'dgr':
+        if 'DGR' not in globals():
+            dgr_config = get_config()
+            dgr_config.weights = "deep_global_registration/pth/ResUNetBN2C-feat32-3dmatch-v0.05.pth"
+            global DGR
+            DGR = DeepGlobalRegistration(dgr_config)
+
+        source = o3d.geometry.PointCloud.create_from_rgbd_image(
+            source_rgbd_image, intrinsic)
+        target = o3d.geometry.PointCloud.create_from_rgbd_image(
+            target_rgbd_image, intrinsic)
+        trans, _ = DGR.register(source, target)
+    
     option = o3d.pipelines.odometry.OdometryOption()
     if abs(s - t) != 1:
         if with_opencv:
@@ -51,7 +65,7 @@ def make_posegraph_for_fragment(path_dataset, sid, eid, color_files,
     pose_graph.nodes.append(
         o3d.pipelines.registration.PoseGraphNode(trans_odometry))
     for s in range(sid, eid):
-        for t in range(s + 1, eid, config["n_files_per_step"]):
+        for t in range(s + 1, min(s + 5, eid)):
             # odometry
             if t == s + 1:
                 print(
@@ -65,11 +79,8 @@ def make_posegraph_for_fragment(path_dataset, sid, eid, color_files,
                     o3d.pipelines.registration.PoseGraphNode(
                         trans_odometry_inv))
                 pose_graph.edges.append(
-                    o3d.pipelines.registration.PoseGraphEdge(s - sid,
-                                                             t - sid,
-                                                             trans,
-                                                             info,
-                                                             uncertain=False))
+                    o3d.pipelines.registration.PoseGraphEdge(
+                        s - sid,  t - sid, trans, info, uncertain=False))
 
             # keyframe loop closure
             if s % config['n_keyframes_per_n_frame'] == 0 \
@@ -83,6 +94,38 @@ def make_posegraph_for_fragment(path_dataset, sid, eid, color_files,
                     pose_graph.edges.append(
                         o3d.pipelines.registration.PoseGraphEdge(
                             s - sid, t - sid, trans, info, uncertain=True))
+        
+        for t in range(min(s + 6, eid), eid, config["n_files_per_step"]):
+            # odometry
+            if t == s + 1:
+                print(
+                    "=> Fragment [%03d/%03d] RGBD matching between frame [%d:%d]"
+                    % (fragment_id, n_fragments - 1, s, t))
+                [success, trans, info] = register_one_rgbd_pair(s, t, color_files, depth_files,
+                                                                intrinsic, with_opencv, config)
+                trans_odometry = np.dot(trans, trans_odometry)
+                trans_odometry_inv = np.linalg.inv(trans_odometry)
+                pose_graph.nodes.append(
+                    o3d.pipelines.registration.PoseGraphNode(
+                        trans_odometry_inv))
+                pose_graph.edges.append(
+                    o3d.pipelines.registration.PoseGraphEdge(
+                        s - sid, t - sid, trans, info, uncertain=False))
+
+            # keyframe loop closure
+            if s % config['n_keyframes_per_n_frame'] == 0 \
+                    and t % config['n_keyframes_per_n_frame'] == 0:
+                print(
+                    "=> Fragment [%03d/%03d] RGBD matching between frame [%d:%d]"
+                    % (fragment_id, n_fragments - 1, s, t))
+                [success, trans, info] = register_one_rgbd_pair(s, t, color_files, depth_files,
+                                                                intrinsic, with_opencv, config)
+                if success:
+                    pose_graph.edges.append(
+                        o3d.pipelines.registration.PoseGraphEdge(
+                            s - sid, t - sid, trans, info, uncertain=True))
+                    
+        
     o3d.io.write_pose_graph(
         join(path_dataset,
              config["template_fragment_posegraph"] % fragment_id),
@@ -156,6 +199,14 @@ def run(config):
     n_files = len(color_files)
     n_fragments = int(
         math.ceil(float(n_files) / config['n_frames_per_fragment']))
+    
+    if config["pair_register_method"] == "dgr" and 'DGR' not in globals():
+        dgr_config = get_config()
+        dgr_config.weights = "deep_global_registration/pth/ResUNetBN2C-feat32-3dmatch-v0.05.pth"
+        global DGR
+        DGR = DeepGlobalRegistration(dgr_config)
+
+
     if config["python_multi_threading"] is True:
         from joblib import Parallel, delayed
         import multiprocessing

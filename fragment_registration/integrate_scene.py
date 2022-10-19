@@ -44,11 +44,37 @@ def scalable_integrate_rgb_frames(path_dataset, intrinsic, config):
     if config["debug_mode"]:
         o3d.visualization.draw_geometries([mesh])
 
+    
+        
     mesh_name = join(path_dataset, config["template_global_mesh"])
     o3d.io.write_triangle_mesh(mesh_name, mesh, False, True)
 
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = mesh.vertices
+    pcd.colors = mesh.vertex_colors
+    
+    if config["loss_ratio"]:
+        # delete noise according to loss ratio
+        labels = np.array(pcd.cluster_dbscan(eps=0.02, min_points=int(1e1), print_progress=True))
+        clusters = sorted(list(set(labels)))
+        clusters_idx = [[idx for idx in range(len(labels)) if labels[idx] == cluster] for cluster in clusters]
+        del_clusters = []
+        for idx in range(len(clusters_idx)):
+            if len(clusters_idx[idx]) < len(pcd.points) * config["loss_ratio"]:
+                del_clusters+=clusters_idx[idx]
+        # print(del_clusters)
+        pcd_filter = o3d.geometry.PointCloud()
+        pcd_filter.points = o3d.utility.Vector3dVector(np.delete(np.array(pcd.points), del_clusters, 0))
+        pcd_filter.colors = o3d.utility.Vector3dVector(np.delete(np.array(pcd.colors), del_clusters, 0))
+        pcd = pcd_filter
+        
+    pcd_name = join(path_dataset, config["template_global_pointcloud"])
+    o3d.io.write_point_cloud(pcd_name, pcd, False, True)
+
     traj_name = join(path_dataset, config["template_global_traj"])
     write_poses_to_log(traj_name, poses)
+    
+
 
 
 def run(config):

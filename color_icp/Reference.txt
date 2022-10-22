@@ -1,1 +1,0 @@
-from https://github.com/hanzheteng/color_icp.git

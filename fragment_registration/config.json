@@ -1,7 +1,7 @@
 {
     "name": "Deep Global Registration & Open3d fragment registration",
 
-    "path_dataset": "data/redwood-boardroom/",
+    "path_dataset": "data/redwood-office/",
     "folder_fragment": "fragments/",
     "folder_scene": "scene/",
     "outputs_dir": "outputs/",

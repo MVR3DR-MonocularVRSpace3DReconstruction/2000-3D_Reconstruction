@@ -1,9 +1,11 @@
 
 
+import copy
 import os
 import numpy as np
 import open3d as o3d
 from tqdm import tqdm
+from rtvec2extrinsic import transformation2AnglePos, angelPos2Transformation
 
 class CameraPose:
 
@@ -29,8 +31,8 @@ def read_trajectory(filename):
             metastr = f.readline()
     return traj
 
-DATA_DIR = "./data/redwood-boardroom/"
-POSE_FILE = "boardroom.log"
+DATA_DIR = "./data/redwood-livingroom/"
+POSE_FILE = "livingroom.log"
 COLOR_LIST = sorted(os.listdir(DATA_DIR+'image/'))
 DEPTH_LIST = sorted(os.listdir(DATA_DIR+'depth/'))
 
@@ -44,6 +46,13 @@ volume = o3d.pipelines.integration.ScalableTSDFVolume(
     color_type=o3d.pipelines.integration.TSDFVolumeColorType.RGB8)
 
 print("=> Start Integrating...")
+
+visual = False
+if visual:
+    vis = o3d.visualization.Visualizer()
+    # vis.add_geometry()
+    vis.create_window()
+
 for i in tqdm(range(0,len(camera_poses),STEP)):
     # print("Integrate {:d}-th image into the volume.".format(i))
     color = o3d.io.read_image("{}image/{}".format(DATA_DIR, COLOR_LIST[i]))
@@ -55,7 +64,20 @@ for i in tqdm(range(0,len(camera_poses),STEP)):
         o3d.camera.PinholeCameraIntrinsic(
             o3d.camera.PinholeCameraIntrinsicParameters.PrimeSenseDefault),
         np.linalg.inv(camera_poses[i].pose))
+    
+    pcd_temp = volume.extract_point_cloud()
+    pcd_temp.transform(angelPos2Transformation(0, -90, 0, 0, 0, 0))
+    # pcd_temp.transform([[1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1]])
+    if visual:
+        vis.add_geometry(pcd_temp)
+        vis.poll_events()
+        vis.update_renderer()
+
+if visual:
+    vis.destroy_window()
+    
 print("=> Done!")
 pcd = volume.extract_point_cloud()
+o3d.io.write_point_cloud("./outputs/livingroom.ply", pcd)
 o3d.visualization.draw_geometries([pcd])
-o3d.io.write_point_cloud("./outputs/boardroom.ply", pcd)
+

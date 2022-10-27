@@ -31,8 +31,8 @@ def read_trajectory(filename):
             metastr = f.readline()
     return traj
 
-DATA_DIR = "./data/redwood-livingroom/"
-POSE_FILE = "livingroom.log"
+DATA_DIR = "./data/redwood-boardroom/"
+POSE_FILE = "boardroom.log"
 COLOR_LIST = sorted(os.listdir(DATA_DIR+'image/'))
 DEPTH_LIST = sorted(os.listdir(DATA_DIR+'depth/'))
 
@@ -65,10 +65,11 @@ for i in tqdm(range(0,len(camera_poses),STEP)):
             o3d.camera.PinholeCameraIntrinsicParameters.PrimeSenseDefault),
         np.linalg.inv(camera_poses[i].pose))
     
-    pcd_temp = volume.extract_point_cloud()
-    pcd_temp.transform(angelPos2Transformation(0, -90, 0, 0, 0, 0))
+    
     # pcd_temp.transform([[1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1]])
     if visual:
+        pcd_temp = volume.extract_point_cloud()
+        pcd_temp.transform(angelPos2Transformation(0, -90, 0, 0, 0, 0))
         vis.add_geometry(pcd_temp)
         vis.poll_events()
         vis.update_renderer()
@@ -78,6 +79,9 @@ if visual:
     
 print("=> Done!")
 pcd = volume.extract_point_cloud()
-o3d.io.write_point_cloud("./outputs/livingroom.ply", pcd)
+mesh = volume.extract_triangle_mesh()
+mesh.compute_vertex_normals()
+o3d.io.write_point_cloud("./outputs/boardroom_pcd.ply", pcd)
+o3d.io.write_triangle_mesh("./outputs/boardroom_mesh.ply", mesh, False, True)
 o3d.visualization.draw_geometries([pcd])
 

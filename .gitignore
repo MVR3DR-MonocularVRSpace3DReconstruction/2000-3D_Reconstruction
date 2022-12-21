@@ -1,5 +1,8 @@
-data/
+data/*
 pth/
 outputs/*
 color_icp/build/
 color_icp/data/*.ply
+__pycache__/
+.ipynb_checkpoints/
+.vscode/
